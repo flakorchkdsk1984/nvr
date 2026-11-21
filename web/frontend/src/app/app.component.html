@@ -1,0 +1,642 @@
+<!-- Main Navigation Bar -->
+<header class="app-header">
+  <div class="brand">
+    <div class="logo-dot"></div>
+    <span class="logo-title">C2L NVR</span>
+    <span class="badge-model">EseeCloud C2L-Y-A</span>
+  </div>
+
+  @if (nvr.currentUser()) {
+    <nav class="nav-tabs">
+      <button class="nav-btn" [class.active]="activeTab() === 'live'" (click)="selectTab('live')">
+        <span class="icon">📡</span> En Vivo
+      </button>
+      <button class="nav-btn" [class.active]="activeTab() === 'recordings'" (click)="selectTab('recordings')">
+        <span class="icon">📼</span> Grabaciones
+      </button>
+      <button class="nav-btn" [class.active]="activeTab() === 'system'" (click)="selectTab('system')">
+        <span class="icon">⚙️</span> Sistema
+      </button>
+    </nav>
+
+    <div class="header-status">
+      <!-- Camera Status Badge -->
+      @if (nvr.health()?.camera?.online) {
+        <span class="status-badge online" title="Cámara 192.168.1.40 Online">
+          <span class="dot"></span> Cámara OK ({{ nvr.health()?.camera?.responseTimeMs }}ms)
+        </span>
+      } @else {
+        <span class="status-badge offline" title="Cámara fuera de línea">
+          <span class="dot"></span> Cámara Caída
+        </span>
+      }
+
+      <!-- Recorder Control Button -->
+      @if (nvr.health()?.recorder?.active) {
+        <button
+          class="btn-recorder active"
+          (click)="toggleRecorder()"
+          [disabled]="recorderLoading()"
+          title="Click para detener la grabación continua 24/7"
+        >
+          <span class="dot pulse"></span> REC 24/7 (Detener)
+        </button>
+      } @else {
+        <button
+          class="btn-recorder stopped"
+          (click)="toggleRecorder()"
+          [disabled]="recorderLoading()"
+          title="Click para iniciar la grabación continua 24/7"
+        >
+          <span class="dot stopped-dot"></span> REC Pausado (Iniciar)
+        </button>
+      }
+
+      <!-- Storage % -->
+      @if (nvr.storage(); as st) {
+        <span class="status-badge storage" [title]="st.usedBytes + ' usados / ' + st.totalBytes">
+          💾 Disco: {{ st.percentUsed }}%
+        </span>
+      }
+
+      <button class="btn-logout" (click)="onLogout()" title="Cerrar sesión">Salir</button>
+    </div>
+  }
+</header>
+
+<!-- LOGIN VIEW -->
+@if (!nvr.currentUser()) {
+  <main class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="shield-icon">🛡️</div>
+        <h2>Acceso Seguro NVR</h2>
+        <p>Servidor Local de Videovigilancia C2L-Y-A</p>
+      </div>
+
+      <form (ngSubmit)="onLogin()" class="login-form">
+        @if (loginError()) {
+          <div class="error-banner">{{ loginError() }}</div>
+        }
+
+        <div class="form-group">
+          <label for="username">Usuario</label>
+          <input
+            id="username"
+            type="text"
+            [(ngModel)]="loginUser"
+            name="username"
+            placeholder="admin"
+            required
+            autocomplete="username"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password">Contraseña</label>
+          <input
+            id="password"
+            type="password"
+            [(ngModel)]="loginPass"
+            name="password"
+            placeholder="••••••••"
+            required
+            autocomplete="current-password"
+          />
+        </div>
+
+        <button type="submit" class="btn-submit">Ingresar al NVR</button>
+      </form>
+      <div class="login-footer">
+        <small>Acceso restringido a la red local (LAN). Sin exposición a internet.</small>
+      </div>
+    </div>
+  </main>
+} @else {
+  <!-- MAIN APPLICATION CONTENT -->
+  <main class="app-main">
+
+    <!-- 1. LIVE VIEW & PTZ -->
+    @if (activeTab() === 'live') {
+      <div class="live-grid">
+        <!-- Video Stream Player -->
+        <section class="video-container" #playerBox>
+          <div class="stream-toolbar">
+            <div class="stream-selector">
+              <button
+                class="pill-btn"
+                [class.active]="selectedStream() === 'c2l_hd'"
+                (click)="changeStream('c2l_hd')"
+              >
+                HD (720p)
+              </button>
+              <button
+                class="pill-btn"
+                [class.active]="selectedStream() === 'c2l_sd'"
+                (click)="changeStream('c2l_sd')"
+              >
+                SD (360p)
+              </button>
+
+              <span class="toolbar-divider">|</span>
+
+              <button
+                class="pill-btn mode-btn"
+                [class.active]="streamMode() === 'mse'"
+                (click)="changeMode('mse')"
+                title="MSE continuo fluido (Ultra baja latencia TCP sin buffer freeze)"
+              >
+                MSE Fluido (TCP)
+              </button>
+              <button
+                class="pill-btn mode-btn"
+                [class.active]="streamMode() === 'hls'"
+                (click)="changeMode('hls')"
+                title="HTTP Live Streaming estándar de go2rtc"
+              >
+                HLS
+              </button>
+              <button
+                class="pill-btn mode-btn"
+                [class.active]="streamMode() === 'snapshot'"
+                (click)="changeMode('snapshot')"
+                title="Capturas periódicas directas (1fps)"
+              >
+                Snapshot (1s)
+              </button>
+            </div>
+
+            <div class="stream-actions">
+              <button
+                class="btn-action recorder-action"
+                [class.recording]="nvr.health()?.recorder?.active"
+                (click)="toggleRecorder()"
+                [disabled]="recorderLoading()"
+                [title]="nvr.health()?.recorder?.active ? 'Detener grabación continua 24/7' : 'Iniciar grabación continua 24/7'"
+              >
+                @if (nvr.health()?.recorder?.active) {
+                  ⏹ Detener REC
+                } @else {
+                  ⏺ Iniciar REC
+                }
+              </button>
+              <button class="btn-action" (click)="downloadSnapshot()" title="Capturar imagen actual">
+                📸 Snapshot
+              </button>
+              <button class="btn-action" (click)="toggleFullscreen(playerBox)" title="Pantalla completa">
+                ⛶ Pantalla Completa
+              </button>
+            </div>
+          </div>
+
+          <!-- Native Live Player -->
+          <div class="live-player-wrapper">
+            @if (streamMode() === 'snapshot') {
+              <img [src]="snapshotLoopUrl()" class="live-snapshot-img" alt="Stream en vivo Snapshot" />
+            } @else {
+              <video
+                #liveVideo
+                autoplay
+                muted
+                playsinline
+                controls
+                class="live-video-element"
+              ></video>
+            }
+
+            <!-- Live HUD Overlay -->
+            <div class="live-hud">
+              <span class="hud-tag live"><span class="dot"></span> EN VIVO</span>
+              <span class="hud-tag quality">{{ selectedStream() === 'c2l_hd' ? '720p HD' : '360p SD' }}</span>
+              <span class="hud-tag stats">{{ liveStats().status }} | Latencia: {{ liveStats().latency }}</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- PTZ Controller Panel -->
+        <aside class="ptz-panel">
+          <div class="panel-header">
+            <h3>🎮 Control PTZ</h3>
+            <span class="subtext">Usa el D-pad o las teclas de flechas (↑ ↓ ← →)</span>
+          </div>
+
+          <!-- Speed Slider -->
+          <div class="control-row speed-row">
+            <label for="speedRange">Velocidad: <strong>{{ ptzSpeed }}</strong></label>
+            <input
+              id="speedRange"
+              type="range"
+              min="1"
+              max="8"
+              [(ngModel)]="ptzSpeed"
+              class="slider"
+            />
+          </div>
+
+          <!-- Step vs Continuous Toggle -->
+          <div class="control-row toggle-row">
+            <label class="toggle-label">
+              <input type="checkbox" [(ngModel)]="ptzContinuous" />
+              <span>Modo continuo (mantener presionado)</span>
+            </label>
+          </div>
+
+          <!-- D-PAD CONTROLLER -->
+          <div class="dpad-container">
+            <div class="dpad-grid">
+              <div></div>
+              <button
+                class="dpad-btn up"
+                (mousedown)="startMove('up')"
+                (mouseup)="stopHolding()"
+                (touchstart)="startMove('up')"
+                (touchend)="stopHolding()"
+                title="Mover Arriba"
+              >
+                ▲
+              </button>
+              <div></div>
+
+              <button
+                class="dpad-btn left"
+                (mousedown)="startMove('left')"
+                (mouseup)="stopHolding()"
+                (touchstart)="startMove('left')"
+                (touchend)="stopHolding()"
+                title="Mover Izquierda"
+              >
+                ◀
+              </button>
+              <button class="dpad-btn stop" (click)="sendPtzStop()" title="Detener movimiento">
+                ■
+              </button>
+              <button
+                class="dpad-btn right"
+                (mousedown)="startMove('right')"
+                (mouseup)="stopHolding()"
+                (touchstart)="startMove('right')"
+                (touchend)="stopHolding()"
+                title="Mover Derecha"
+              >
+                ▶
+              </button>
+
+              <div></div>
+              <button
+                class="dpad-btn down"
+                (mousedown)="startMove('down')"
+                (mouseup)="stopHolding()"
+                (touchstart)="startMove('down')"
+                (touchend)="stopHolding()"
+                title="Mover Abajo"
+              >
+                ▼
+              </button>
+              <div></div>
+            </div>
+
+            <!-- Optical Zoom -->
+            <div class="zoom-controls">
+              <button
+                class="zoom-btn"
+                (mousedown)="startMove('zoomin')"
+                (mouseup)="stopHolding()"
+                title="Acercar (Zoom In)"
+              >
+                🔍 +
+              </button>
+              <button
+                class="zoom-btn"
+                (mousedown)="startMove('zoomout')"
+                (mouseup)="stopHolding()"
+                title="Alejar (Zoom Out)"
+              >
+                🔍 −
+              </button>
+            </div>
+          </div>
+
+          <!-- PRESETS 1..8 -->
+          <div class="presets-section">
+            <div class="section-title">
+              <h4>🎯 Presets Rápidos</h4>
+            </div>
+            <div class="presets-grid">
+              @for (p of nvr.presets(); track p.number) {
+                <div class="preset-card">
+                  <button class="btn-preset-go" (click)="gotoPreset(p.number)" [title]="'Ir a ' + p.name">
+                    <span class="num">{{ p.number }}</span>
+                    <span class="name">{{ p.name }}</span>
+                  </button>
+                  <button class="btn-preset-edit" (click)="openSavePresetModal(p)" title="Guardar posición actual">
+                    💾
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+        </aside>
+      </div>
+    }
+
+    <!-- 2. RECORDINGS VIEW -->
+    @if (activeTab() === 'recordings') {
+      <div class="recordings-layout">
+        <!-- Date Selector Sidebar -->
+        <aside class="recordings-sidebar">
+          <h3>📅 Días con Grabación</h3>
+          <div class="days-list">
+            @for (d of nvr.days(); track d.date) {
+              <button
+                class="day-item"
+                [class.selected]="nvr.currentDate() === d.date"
+                (click)="selectDate(d.date)"
+              >
+                <span class="day-date">{{ d.date }}</span>
+                <span class="day-meta">{{ d.segmentCount }} segmentos ({{ formatBytes(d.totalSizeBytes) }})</span>
+              </button>
+            } @empty {
+              <p class="empty-text">No hay grabaciones archivadas aún.</p>
+            }
+          </div>
+        </aside>
+
+        <!-- Main Recordings Panel -->
+        <section class="recordings-content">
+          <!-- Active Player Modal or Embedded Player -->
+          @if (activeSegment(); as currentSeg) {
+            <div class="playback-box">
+              <div class="playback-header">
+                <div>
+                  <h4>🎬 Reproduciendo: {{ currentSeg.date }} / {{ currentSeg.fileName }}</h4>
+                  <span class="playback-meta">Hora: {{ currentSeg.startTime }} | Tamaño: {{ formatBytes(currentSeg.sizeBytes) }}</span>
+                </div>
+                <button class="btn-close-player" (click)="activeSegment.set(null)">✕ Cerrar Reproductor</button>
+              </div>
+
+              <div class="player-wrapper">
+                <video
+                  #videoPlayer
+                  controls
+                  autoplay
+                  preload="metadata"
+                  class="recording-video"
+                  (ended)="playNextSegment()"
+                  [src]="'/api/recordings/' + currentSeg.date + '/' + currentSeg.fileName"
+                ></video>
+              </div>
+
+              <!-- Playback Controls -->
+              <div class="playback-controls">
+                <span class="controls-hint">Atajos: Espacio (Play/Pausa) | ← / → (Seek ±10s)</span>
+                <div class="speed-selector">
+                  <span>Velocidad:</span>
+                  @for (spd of [0.5, 1.0, 1.5, 2.0, 4.0]; track spd) {
+                    <button
+                      class="speed-btn"
+                      [class.active]="playbackSpeed === spd"
+                      (click)="setSpeed(spd)"
+                    >
+                      {{ spd }}x
+                    </button>
+                  }
+                </div>
+                <div class="playback-actions">
+                  <button class="btn-clip" (click)="openExportClipModal(currentSeg)">✂️ Exportar Clip</button>
+                  <a
+                    class="btn-download"
+                    [href]="'/api/recordings/' + currentSeg.date + '/' + currentSeg.fileName"
+                    [download]="currentSeg.fileName"
+                  >
+                    ⬇️ Descargar
+                  </a>
+                </div>
+              </div>
+            </div>
+          }
+
+          <!-- Segments Timeline and Grid -->
+          <div class="segments-header">
+            <h3>Segmentos de Grabación: {{ nvr.currentDate() }}</h3>
+            <span class="segments-count">{{ nvr.segments().length }} clips (segmentos de 15 min)</span>
+          </div>
+
+          <div class="segments-grid">
+            @for (seg of nvr.segments(); track seg.fileName) {
+              <div class="segment-card" [class.recording-card]="seg.isRecording">
+                <div class="thumb-container">
+                  @if (seg.isRecording) {
+                    <div class="rec-overlay">
+                      <span class="rec-dot"></span> Grabando ahora...
+                    </div>
+                  } @else {
+                    <img
+                      [src]="'/api/recordings/' + seg.date + '/' + seg.fileName + '/thumb'"
+                      alt="Miniatura"
+                      class="thumb-img"
+                      loading="lazy"
+                    />
+                    <button class="play-overlay-btn" (click)="playSegment(seg)">▶</button>
+                  }
+                </div>
+
+                <div class="card-info">
+                  <div class="time-row">
+                    <span class="start-time">🕒 {{ seg.startTime }}</span>
+                    <span class="size-badge">{{ formatBytes(seg.sizeBytes) }}</span>
+                  </div>
+                  <div class="file-name" [title]="seg.fileName">{{ seg.fileName }}</div>
+
+                  <div class="card-actions">
+                    @if (!seg.isRecording) {
+                      <button class="btn-play-sm" (click)="playSegment(seg)">Reproducir</button>
+                      <button class="btn-del-sm" (click)="deleteRecording(seg)" title="Borrar segmento">🗑️</button>
+                    } @else {
+                      <span class="active-writing-badge">En escritura</span>
+                    }
+                  </div>
+                </div>
+              </div>
+            } @empty {
+              <div class="no-segments">No hay segmentos para la fecha seleccionada.</div>
+            }
+          </div>
+        </section>
+      </div>
+    }
+
+    <!-- 3. SYSTEM & STORAGE -->
+    @if (activeTab() === 'system') {
+      <div class="system-container">
+        <!-- Storage Dashboard -->
+        <section class="sys-card storage-card">
+          <h3>💾 Almacenamiento y Retención Automática</h3>
+          @if (nvr.storage(); as st) {
+            <div class="storage-metrics">
+              <div class="metric">
+                <span class="metric-label">Uso de Disco</span>
+                <span class="metric-value">{{ st.percentUsed }}%</span>
+                <div class="progress-bar">
+                  <div class="progress-fill" [style.width.%]="st.percentUsed"></div>
+                </div>
+                <small>{{ formatBytes(st.usedBytes) }} usados de {{ formatBytes(st.totalBytes) }} ({{ formatBytes(st.freeBytes) }} libres)</small>
+              </div>
+
+              <div class="metric">
+                <span class="metric-label">Espacio Grabaciones</span>
+                <span class="metric-value">{{ formatBytes(st.recordingsSizeBytes) }}</span>
+                <small>{{ st.totalSegments }} segmentos almacenados</small>
+              </div>
+
+              <div class="metric">
+                <span class="metric-label">Consumo Diario Promedio</span>
+                <span class="metric-value">~{{ formatBytes(st.avgDailyBytes) }}/día</span>
+                <small>Retención objetivo: {{ st.retentionTargetDays }} días</small>
+              </div>
+            </div>
+
+            <div class="retention-actions">
+              <button class="btn-purge" (click)="triggerManualRetention()">
+                🧹 Ejecutar Purga de Retención Manual
+              </button>
+              <span class="retention-hint">
+                El sistema purga automáticamente grabaciones > {{ st.retentionTargetDays }} días cada 60 minutos o si el disco supera el 90%.
+              </span>
+            </div>
+          }
+        </section>
+
+        <!-- Settings & IP Configuration -->
+        <section class="sys-card config-card">
+          <div class="config-header">
+            <h3>⚙️ Configuración de Cámara IP y Grabaciones</h3>
+            <span class="subtext">Modifica la dirección IP de la cámara o la ruta de almacenamiento sin reiniciar manualmente</span>
+          </div>
+
+          <form (ngSubmit)="saveConfig()" class="config-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="camIp">IP de la Cámara</label>
+                <input id="camIp" type="text" [(ngModel)]="configCameraHost" name="camIp" placeholder="192.168.1.40" required />
+              </div>
+              <div class="form-group">
+                <label for="camPort">Puerto HTTP</label>
+                <input id="camPort" type="number" [(ngModel)]="configCameraPort" name="camPort" placeholder="80" required />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="recDir">Ruta de Grabaciones (Carpeta o Volumen)</label>
+                <input id="recDir" type="text" [(ngModel)]="configRecordingsDir" name="recDir" placeholder="/home/chkdsk/c2l_nvr/recordings" required />
+              </div>
+              <div class="form-group">
+                <label for="retDays">Días de Retención</label>
+                <input id="retDays" type="number" [(ngModel)]="configRetentionDays" name="retDays" min="1" max="365" required />
+              </div>
+            </div>
+
+            <div class="config-actions">
+              <button type="submit" class="btn-save-config" [disabled]="configSaving()">
+                {{ configSaving() ? 'Guardando y reconectando...' : '💾 Guardar y Aplicar Cambios' }}
+              </button>
+              @if (configMsg()) {
+                <span class="config-msg" [class.error]="configMsgIsError()">{{ configMsg() }}</span>
+              }
+            </div>
+          </form>
+        </section>
+
+        <!-- System Logs -->
+        <section class="sys-card logs-card">
+          <div class="logs-header">
+            <h3>📋 Registro de Eventos del Sistema (Logs)</h3>
+            <button class="btn-refresh-logs" (click)="nvr.fetchLogs().subscribe()">🔄 Actualizar</button>
+          </div>
+
+          <div class="logs-table-wrapper">
+            <table class="logs-table">
+              <thead>
+                <tr>
+                  <th>Fecha/Hora</th>
+                  <th>Nivel</th>
+                  <th>Mensaje</th>
+                  <th>Detalles</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (log of nvr.logs(); track log.id) {
+                  <tr [class]="log.level">
+                    <td class="log-time">{{ log.timestamp | date:'short' }}</td>
+                    <td class="log-level"><span class="level-badge" [class]="log.level">{{ log.level | uppercase }}</span></td>
+                    <td class="log-msg">{{ log.message }}</td>
+                    <td class="log-details">{{ log.details ? (log.details | json) : '-' }}</td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="4" class="text-center">No hay eventos registrados.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    }
+
+  </main>
+}
+
+<!-- PRESET EDIT MODAL -->
+@if (editingPreset(); as p) {
+  <div class="modal-backdrop">
+    <div class="modal-box">
+      <h4>💾 Guardar Posición en Preset {{ p.number }}</h4>
+      <p>La cámara memorizará su posición actual de Pan/Tilt/Zoom.</p>
+
+      <div class="form-group">
+        <label for="pname">Nombre del Preset</label>
+        <input id="pname" type="text" [(ngModel)]="presetNameInput" placeholder="Ej: Entrada Principal" maxlength="30" />
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="editingPreset.set(null)">Cancelar</button>
+        <button class="btn-confirm" (click)="savePreset()">Guardar Preset</button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- CLIP EXPORT MODAL -->
+@if (exportingSegment(); as seg) {
+  <div class="modal-backdrop">
+    <div class="modal-box">
+      <h4>✂️ Exportar Clip de Video</h4>
+      <p>Segmento: <strong>{{ seg.fileName }}</strong></p>
+
+      <div class="form-group">
+        <label for="cstart">Segundo de inicio (0 - {{ seg.durationSeconds }})</label>
+        <input id="cstart" type="number" [(ngModel)]="clipStartSeconds" min="0" [max]="seg.durationSeconds" />
+      </div>
+
+      <div class="form-group">
+        <label for="cdur">Duración en segundos (máx 3600)</label>
+        <input id="cdur" type="number" [(ngModel)]="clipDurationSeconds" min="1" max="3600" />
+      </div>
+
+      @if (exportedDownloadUrl(); as url) {
+        <div class="export-success">
+          <p>✅ ¡Clip exportado con éxito!</p>
+          <a class="btn-download-clip" [href]="url" target="_blank" download>⬇️ Descargar Clip</a>
+        </div>
+      }
+
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="exportingSegment.set(null)">Cerrar</button>
+        @if (!exportedDownloadUrl()) {
+          <button class="btn-confirm" [disabled]="exportingLoading()" (click)="submitExportClip()">
+            {{ exportingLoading() ? 'Exportando con FFmpeg...' : 'Generar Clip' }}
+          </button>
+        }
+      </div>
+    </div>
+  </div>
+}

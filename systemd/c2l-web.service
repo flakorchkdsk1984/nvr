@@ -1,0 +1,16 @@
+[Unit]
+Description=C2L NVR Full-Stack Web Server (Fastify + Angular 19)
+After=network.target c2l-go2rtc.service
+Wants=c2l-go2rtc.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/chkdsk/c2l_nvr/web/backend
+ExecStart=/usr/bin/node /home/chkdsk/c2l_nvr/web/backend/dist/server.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

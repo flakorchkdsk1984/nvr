@@ -1,0 +1,14 @@
+{
+  "name": "c2l-nvr-suite",
+  "version": "1.0.0",
+  "description": "Unified NVR Web Suite for EseeCloud C2L-Y-A (Angular 19 + Node.js/TypeScript)",
+  "scripts": {
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run build:frontend && npm run build:backend",
+    "start": "cd backend && npm start",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm start",
+    "test": "cd backend && npm test"
+  }
+}

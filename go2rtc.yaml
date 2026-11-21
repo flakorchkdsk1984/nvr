@@ -1,0 +1,16 @@
+streams:
+  c2l_hd: eseecloud://admin:@192.168.1.40:80/livestream/11
+  c2l_sd: eseecloud://admin:@192.168.1.40:80/livestream/12
+
+api:
+  listen: ":1984"
+  origin: "*"
+
+webrtc:
+  listen: ":8555"
+
+rtsp:
+  listen: ":8554"
+
+log:
+  level: info

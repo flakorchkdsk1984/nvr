@@ -1,0 +1,30 @@
+# Local symlinks / binaries
+bin/
+
+# Environment & secrets
+.env
+.env.local
+
+# Video recordings & cache
+recordings/
+cache/
+data/run/
+data/*.pid
+data/*.log
+data/web.log
+data/recorder.log
+data/go2rtc.log
+
+# Node dependencies & caches
+node_modules/
+.angular/
+
+# Test artifacts
+test_*
+*.mp4
+*.jpg
+*.jpeg
+
+# OS files
+.DS_Store
+Thumbs.db

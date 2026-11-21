@@ -1,0 +1,71 @@
+# ==============================================================================
+# C2L NVR Suite - Docker Compose Configuration
+# ==============================================================================
+# Para iniciar:
+#   docker compose up -d --build
+#
+# Para ver logs:
+#   docker compose logs -f
+#
+# Para detener:
+#   docker compose down
+# ==============================================================================
+
+services:
+  c2l-nvr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: c2l_nvr
+    restart: unless-stopped
+
+    # NOTA DE RED:
+    # En Linux se recomienda network_mode: host para que go2rtc acceda directamente
+    # a la subred de cámaras y no sufra restricciones NAT con WebRTC o transmisiones RTP.
+    # Si estás en Windows o macOS con Docker Desktop, comenta network_mode y descomenta ports.
+    network_mode: host
+    # ports:
+    #   - "8080:8080"       # Panel Web NVR + API + MSE/HLS streaming
+    #   - "8554:8554"       # Servidor RTSP local (para VLC)
+    #   - "1984:1984"       # API directa go2rtc
+    #   - "8555:8555/tcp"   # WebRTC TCP
+    #   - "8555:8555/udp"   # WebRTC UDP
+
+    environment:
+      # ========================================================================
+      # 1. DIRECCIÓN IP DE LA CÁMARA (¡Cámbiala aquí si tu cámara cambia de IP!)
+      # ========================================================================
+      - CAMERA_HOST=192.168.1.40
+      - CAMERA_PORT=80
+      - CAMERA_USER=admin
+      - CAMERA_PASS=
+
+      # ========================================================================
+      # 2. POLÍTICAS DE GRABACIÓN Y RETENCIÓN
+      # ========================================================================
+      - RECORDINGS_DIR=/app/recordings
+      - SEGMENT_SECONDS=900          # 15 minutos por archivo MP4
+      - RETENTION_DAYS=7             # Días de almacenamiento antes de purga automática
+      - MAX_DISK_USAGE_PERCENT=90    # Límite de seguridad en disco
+
+      # ========================================================================
+      # 3. SEGURIDAD Y ACCESO WEB (Panel NVR en puerto 8080)
+      # ========================================================================
+      - PORT=8080
+      - AUTH_USER=admin
+      - AUTH_PASS_HASH=$2a$10$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu # Password por defecto: admin123
+      - JWT_SECRET=super_secret_jwt_c2l_nvr_key_2026_xyz987
+
+    volumes:
+      # ========================================================================
+      # 4. LUGAR DONDE GUARDAR LAS GRABACIONES EN TU DISCO DURO (HOST)
+      #    Cambia la ruta a la izquierda de ':' por la carpeta o disco donde
+      #    deseas almacenar los videos de seguridad 24/7.
+      #    Ejemplos:
+      #      - ./recordings:/app/recordings                 (carpeta local)
+      #      - /mnt/disco_externo/nvr:/app/recordings       (disco secundario)
+      #      - D:/Seguridad/Recordings:/app/recordings      (Windows)
+      # ========================================================================
+      - ./recordings:/app/recordings
+      - ./data:/app/data
+      - ./cache:/app/cache

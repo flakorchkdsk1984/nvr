@@ -1,0 +1,11 @@
+node_modules
+recordings
+cache
+data/run
+data/*.pid
+data/*.log
+.git
+.angular
+*.mp4
+*.jpg
+*.jpeg

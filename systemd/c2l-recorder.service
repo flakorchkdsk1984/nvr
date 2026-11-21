@@ -1,0 +1,15 @@
+[Unit]
+Description=C2L NVR 24/7 FFmpeg Continuous Segment Recorder
+After=network.target c2l-go2rtc.service
+Wants=c2l-go2rtc.service
+
+[Service]
+Type=simple
+ExecStart=/home/chkdsk/c2l_nvr/scripts/recorder.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
