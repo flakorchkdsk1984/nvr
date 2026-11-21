@@ -89,5 +89,6 @@ echo "[3/3] Starting NVR Web Server on port ${PORT}..."
 node /app/web/backend/dist/server.js &
 NODE_PID=$!
 
-# Wait for any process to exit
-wait -n $GO2RTC_PID $REC_PID $NODE_PID
+# Keep container running as long as the Web Server is alive
+# The recorder can be stopped/started dynamically without terminating the container
+wait $NODE_PID

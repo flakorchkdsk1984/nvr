@@ -14,6 +14,20 @@ if [ -f "$ENV_FILE" ]; then
   set +a
 fi
 
+DATA_RUN_DIR="${DATA_DIR:-$PROJECT_ROOT/data}/run"
+mkdir -p "$DATA_RUN_DIR"
+echo $$ > "$DATA_RUN_DIR/recorder.pid"
+
+cleanup_rec() {
+  if [ -f "$DATA_RUN_DIR/ffmpeg.pid" ]; then
+    kill -TERM $(cat "$DATA_RUN_DIR/ffmpeg.pid" 2>/dev/null) 2>/dev/null || true
+    rm -f "$DATA_RUN_DIR/ffmpeg.pid"
+  fi
+  rm -f "$DATA_RUN_DIR/recorder.pid"
+  exit 0
+}
+trap cleanup_rec SIGTERM SIGINT
+
 # Detect ffmpeg binary
 if [ -n "$FFMPEG_PATH" ] && [ -x "$FFMPEG_PATH" ]; then
   FFMPEG_BIN="$FFMPEG_PATH"
@@ -33,6 +47,7 @@ echo "Starting C2L NVR 24/7 Recorder"
 echo "Source: $RTSP_URL"
 echo "Destination: $REC_DIR"
 echo "Segment Length: ${SEGMENT_LEN}s (15 min)"
+echo "PID: $$ (saved to $DATA_RUN_DIR/recorder.pid)"
 echo "=========================================="
 
 mkdir -p "$REC_DIR"
@@ -52,9 +67,13 @@ while true; do
     -segment_time "$SEGMENT_LEN" \
     -reset_timestamps 1 \
     -strftime 1 \
-    "$REC_DIR/%Y-%m-%d/c2l_%Y%m%d_%H%M%S.mp4"
+    "$REC_DIR/%Y-%m-%d/c2l_%Y%m%d_%H%M%S.mp4" &
 
+  FFMPEG_PID=$!
+  echo $FFMPEG_PID > "$DATA_RUN_DIR/ffmpeg.pid"
+  wait $FFMPEG_PID
   EXIT_CODE=$?
+  rm -f "$DATA_RUN_DIR/ffmpeg.pid"
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] FFmpeg exited with code $EXIT_CODE. Reconnecting in 5 seconds..."
   sleep 5
 done

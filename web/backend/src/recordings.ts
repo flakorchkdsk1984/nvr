@@ -139,6 +139,11 @@ export function getAvailableDays(): DaySummary[] {
 export async function generateThumbnail(date: string, fileName: string): Promise<string> {
   const filePath = validateRecordingPath(date, fileName);
   const baseName = path.parse(fileName).name;
+
+  if (!fs.existsSync(config.THUMBS_DIR)) {
+    fs.mkdirSync(config.THUMBS_DIR, { recursive: true });
+  }
+
   const thumbPath = path.join(config.THUMBS_DIR, `${baseName}.jpg`);
 
   if (fs.existsSync(thumbPath)) {

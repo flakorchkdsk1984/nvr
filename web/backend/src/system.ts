@@ -72,7 +72,7 @@ export async function checkSystemHealth(): Promise<HealthStatus> {
   // Check recorder process
   let recorderActive = false;
   try {
-    const { stdout } = await execAsync("ps aux | grep -E 'ffmpeg.*c2l_hd' | grep -v grep");
+    const { stdout } = await execAsync("pgrep -x ffmpeg").catch(() => ({ stdout: '' }));
     recorderActive = stdout.trim().length > 0;
   } catch {
     recorderActive = false;
@@ -126,12 +126,13 @@ export async function getLiveSnapshotBuffer(): Promise<{ buffer: Buffer; content
 
 export async function startRecorder(): Promise<{ success: boolean; message: string; active: boolean }> {
   try {
-    const { stdout } = await execAsync("ps aux | grep -E 'recorder.sh' | grep -v grep").catch(() => ({ stdout: '' }));
+    const { stdout } = await execAsync("pgrep -x ffmpeg").catch(() => ({ stdout: '' }));
     if (stdout.trim().length > 0) {
       return { success: true, message: 'El grabador ya se encuentra en ejecución', active: true };
     }
 
     const possiblePaths = [
+      '/app/scripts/recorder.sh',
       '/home/chkdsk/c2l_nvr/scripts/recorder.sh',
       path.resolve(__dirname, '../../../scripts/recorder.sh'),
       path.resolve(process.cwd(), 'scripts/recorder.sh'),
@@ -147,6 +148,7 @@ export async function startRecorder(): Promise<{ success: boolean; message: stri
       detached: true,
       stdio: 'ignore',
       cwd: projectRoot,
+      env: { ...process.env },
     });
     child.unref();
 
@@ -156,7 +158,7 @@ export async function startRecorder(): Promise<{ success: boolean; message: stri
     await new Promise((r) => setTimeout(r, 1500));
 
     // Verify if ffmpeg is running
-    const check = await execAsync("ps aux | grep -E 'ffmpeg.*c2l_hd' | grep -v grep").catch(() => ({ stdout: '' }));
+    const check = await execAsync("pgrep -x ffmpeg").catch(() => ({ stdout: '' }));
     const active = check.stdout.trim().length > 0;
 
     return {
@@ -173,12 +175,45 @@ export async function startRecorder(): Promise<{ success: boolean; message: stri
 export async function stopRecorder(): Promise<{ success: boolean; message: string; active: boolean }> {
   try {
     addLog('warn', 'Deteniendo grabación 24/7 desde el panel web...');
-    // Kill the bash loop first so it won't respawn ffmpeg (use regex trick [r] to avoid self-match)
-    await execAsync("pkill -f '[r]ecorder.sh' || true");
-    // Send SIGTERM to ffmpeg so it finalizes the MP4 trailer cleanly
-    await execAsync("pkill -TERM -f '[f]fmpeg.*c2l_hd' || true");
 
-    await new Promise((r) => setTimeout(r, 1000));
+    // 1. Read PID from recorder.pid and ffmpeg.pid if available
+    const possiblePidDirs = [
+      path.join(config.DATA_DIR, 'run'),
+      '/app/data/run',
+      '/home/chkdsk/c2l_nvr/data/run',
+    ];
+    for (const pDir of possiblePidDirs) {
+      const recPidFile = path.join(pDir, 'recorder.pid');
+      const ffmpegPidFile = path.join(pDir, 'ffmpeg.pid');
+      if (fs.existsSync(recPidFile)) {
+        try {
+          const pid = parseInt(fs.readFileSync(recPidFile, 'utf8').trim(), 10);
+          if (!isNaN(pid)) process.kill(pid, 'SIGTERM');
+        } catch {}
+        try { fs.unlinkSync(recPidFile); } catch {}
+      }
+      if (fs.existsSync(ffmpegPidFile)) {
+        try {
+          const pid = parseInt(fs.readFileSync(ffmpegPidFile, 'utf8').trim(), 10);
+          if (!isNaN(pid)) process.kill(pid, 'SIGTERM');
+        } catch {}
+        try { fs.unlinkSync(ffmpegPidFile); } catch {}
+      }
+    }
+
+    // 2. Terminate any remaining ffmpeg process safely
+    try {
+      const { stdout } = await execAsync("pgrep -x ffmpeg");
+      const pids = stdout.trim().split(/\s+/).filter(Boolean);
+      for (const p of pids) {
+        const pidNum = parseInt(p, 10);
+        if (!isNaN(pidNum) && pidNum !== process.pid) {
+          try { process.kill(pidNum, 'SIGTERM'); } catch {}
+        }
+      }
+    } catch {}
+
+    await new Promise((r) => setTimeout(r, 800));
 
     addLog('info', 'Grabación 24/7 detenida correctamente');
     return { success: true, message: 'Grabación detenida correctamente', active: false };
