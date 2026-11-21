@@ -41,7 +41,7 @@ Este sistema transforma una cámara doméstica **EseeCloud C2L-Y-A** (o cualquie
                                        │    Angular 19 Frontend         │
                                        │    SPA Dark Theme, Signals,    │
                                        │    D-pad PTZ, Timeline 24h     │
-                                       │    http://localhost:8080       │
+                                       │    http://localhost:8000       │
                                        └────────────────────────────────┘
 ```
 
@@ -66,7 +66,7 @@ docker compose logs -f
 ```
 
 Una vez iniciado, accede al panel en tu navegador:
-👉 **[http://localhost:8080](http://localhost:8080)**  
+👉 **[http://localhost:8000](http://localhost:8000)**  
 *(Credenciales por defecto: Usuario: `admin` | Contraseña: `admin123`)*
 
 ---
@@ -93,7 +93,7 @@ docker compose up -d
 ```
 
 #### Opción B: Directamente desde el Panel Web (Sin reiniciar)
-1. Ingresa a [http://localhost:8080](http://localhost:8080) con tu usuario y contraseña.
+1. Ingresa a [http://localhost:8000](http://localhost:8000) con tu usuario y contraseña.
 2. Ve a la pestaña **⚙️ Sistema**.
 3. En la tarjeta **"Configuración de Cámara IP y Grabaciones"**, escribe la nueva dirección IP y puerto.
 4. Haz clic en **"💾 Guardar y Aplicar Cambios"**. El NVR reconfigurará `go2rtc` y reiniciará el grabador automáticamente con la nueva IP.
@@ -136,11 +136,11 @@ En el archivo `docker-compose.yml`, localiza la sección `volumes` y modifica la
 
 | Servicio | URL / Dirección | Descripción |
 |---|---|---|
-| **Panel Web NVR** | [http://localhost:8080](http://localhost:8080) | Panel de control completo (En Vivo, Grabaciones, PTZ, Sistema) |
+| **Panel Web NVR** | [http://localhost:8000](http://localhost:8000) | Panel de control completo (En Vivo, Grabaciones, PTZ, Sistema) |
 | **Stream HD (VLC)** | `rtsp://localhost:8554/c2l_hd` | Stream principal 1280x720 H.264 @ 15fps + Audio AAC |
 | **Stream SD (VLC)** | `rtsp://localhost:8554/c2l_sd` | Sub-stream 640x360 H.264 @ 15fps |
 | **go2rtc Web UI** | [http://localhost:1984](http://localhost:1984) | Monitor interno de streams y depuración WebRTC |
-| **Instantánea JPEG** | `http://localhost:8080/api/snapshot` | Captura JPEG actual con autenticación |
+| **Instantánea JPEG** | `http://localhost:8000/api/snapshot` | Captura JPEG actual con autenticación |
 
 > [!TIP]
 > **Ajustes óptimos para VLC:** Al abrir la URL RTSP en VLC (**Medios > Abrir ubicación de red**), marca "Mostrar más opciones" y añade `:network-caching=300 :rtsp-tcp` para eliminar latencia y microcortes.

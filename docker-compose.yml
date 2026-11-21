@@ -25,7 +25,7 @@ services:
     # Si estás en Windows o macOS con Docker Desktop, comenta network_mode y descomenta ports.
     network_mode: host
     # ports:
-    #   - "8080:8080"       # Panel Web NVR + API + MSE/HLS streaming
+    #   - "8000:8000"       # Panel Web NVR + API + MSE/HLS streaming
     #   - "8554:8554"       # Servidor RTSP local (para VLC)
     #   - "1984:1984"       # API directa go2rtc
     #   - "8555:8555/tcp"   # WebRTC TCP
@@ -49,9 +49,9 @@ services:
       - MAX_DISK_USAGE_PERCENT=90    # Límite de seguridad en disco
 
       # ========================================================================
-      # 3. SEGURIDAD Y ACCESO WEB (Panel NVR en puerto 8080)
+      # 3. SEGURIDAD Y ACCESO WEB (Panel NVR en puerto 8000)
       # ========================================================================
-      - PORT=8080
+      - PORT=8000
       - AUTH_USER=admin
       - AUTH_PASS_HASH=$2a$10$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu # Password por defecto: admin123
       - JWT_SECRET=super_secret_jwt_c2l_nvr_key_2026_xyz987

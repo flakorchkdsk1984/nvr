@@ -74,10 +74,10 @@ RUN mkdir -p /app/recordings /app/data/run /app/cache/thumbs
 VOLUME ["/app/recordings", "/app/data", "/app/cache"]
 
 # Ports:
-# 8080: Web NVR Dashboard + API + MSE/HLS proxy
+# 8000: Web NVR Dashboard + API + MSE/HLS proxy
 # 8554: RTSP Server (go2rtc)
 # 1984: go2rtc Web / API
 # 8555: WebRTC (TCP/UDP)
-EXPOSE 8080 8554 1984 8555/tcp 8555/udp
+EXPOSE 8000 8554 1984 8555/tcp 8555/udp
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

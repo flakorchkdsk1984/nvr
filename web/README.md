@@ -35,7 +35,7 @@ Este sistema transforma una cámara doméstica **EseeCloud C2L-Y-A** (192.168.1.
                                        │    Angular 19 Frontend         │
                                        │    SPA Dark Theme, Signals,    │
                                        │    D-pad PTZ, Timeline 24h     │
-                                       │    http://localhost:8080       │
+                                       │    http://localhost:8000       │
                                        └────────────────────────────────┘
 ```
 
@@ -43,7 +43,7 @@ Este sistema transforma una cámara doméstica **EseeCloud C2L-Y-A** (192.168.1.
 
 ## 2. Acceso y URLs de Streaming
 
-- **Panel Web NVR:** [http://localhost:8080](http://localhost:8080)
+- **Panel Web NVR:** [http://localhost:8000](http://localhost:8000)
   - Usuario por defecto: `admin`
   - Contraseña por defecto: `admin123` *(configurable en `.env`)*
 - **Stream en VLC (Red Local):**
@@ -96,12 +96,12 @@ Dentro de `/home/chkdsk/c2l_nvr/web/`:
 # Compilar frontend y backend
 npm run build
 
-# Iniciar servidor backend en producción (sirve el frontend en :8080)
+# Iniciar servidor backend en producción (sirve el frontend en :8000)
 npm run start
 
 # Desarrollo:
 npm run dev:backend   # Levanta Fastify con recarga en caliente (tsx watch)
-npm run dev:frontend  # Levanta Angular en :4200 con proxy a :8080
+npm run dev:frontend  # Levanta Angular en :4200 con proxy a :8000
 
 # Ejecutar tests de validación y seguridad
 npm run test
@@ -159,7 +159,7 @@ RETENTION_DAYS=7
 MAX_DISK_USAGE_PERCENT=90
 
 # Servidor Web y Seguridad
-PORT=8080
+PORT=8000
 AUTH_USER=admin
 AUTH_PASS_HASH=$2a$10$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu
 JWT_SECRET=super_secret_jwt_c2l_nvr_key_2026_xyz987

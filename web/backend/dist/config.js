@@ -40,7 +40,7 @@ const ConfigSchema = z.object({
     SEGMENT_SECONDS: z.coerce.number().default(900),
     RETENTION_DAYS: z.coerce.number().default(7),
     MAX_DISK_USAGE_PERCENT: z.coerce.number().default(90),
-    PORT: z.coerce.number().default(8080),
+    PORT: z.coerce.number().default(8000),
     AUTH_USER: z.string().default('admin'),
     AUTH_PASS_HASH: z.string().default('$2a$10$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu'),
     JWT_SECRET: z.string().default('super_secret_jwt_c2l_nvr_key_2026_xyz987'),

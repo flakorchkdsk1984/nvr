@@ -48,13 +48,13 @@ start_standalone() {
     WEB_PID=$!
     echo $WEB_PID > "$PID_DIR/web.pid"
     disown $WEB_PID 2>/dev/null || true
-    echo "  [+] Web Server started on http://0.0.0.0:8080 (PID: $WEB_PID)"
+    echo "  [+] Web Server started on http://0.0.0.0:8000 (PID: $WEB_PID)"
   else
     echo "  [=] Web Server is already running"
   fi
 
   echo "=========================================================="
-  echo "  NVR Web UI: http://localhost:8080"
+  echo "  NVR Web UI: http://localhost:8000"
   echo "  go2rtc Web: http://localhost:1984"
   echo "  RTSP Feed : rtsp://localhost:8554/c2l_hd"
   echo "=========================================================="
@@ -87,13 +87,13 @@ status_nvr() {
   fi
 
   if pgrep -f "node.*dist/server.js" > /dev/null; then
-    echo "  Web UI Server : [RUNNING] (http://0.0.0.0:8080) (PID: $(pgrep -f "node.*dist/server.js" | head -1))"
+    echo "  Web UI Server : [RUNNING] (http://0.0.0.0:8000) (PID: $(pgrep -f "node.*dist/server.js" | head -1))"
   else
     echo "  Web UI Server : [STOPPED]"
   fi
 
   echo ""
-  curl -s http://127.0.0.1:8080/api/health | jq . 2>/dev/null || curl -s http://127.0.0.1:8080/api/health
+  curl -s http://127.0.0.1:8000/api/health | jq . 2>/dev/null || curl -s http://127.0.0.1:8000/api/health
   echo ""
 }
 

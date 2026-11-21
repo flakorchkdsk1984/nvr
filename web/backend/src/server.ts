@@ -66,7 +66,7 @@ await fastify.register(fastifyCors, {
 
 await fastify.register(fastifyCookie);
 
-// Proxy go2rtc Web, API, and WebSockets through the main backend port (8080)
+// Proxy go2rtc Web, API, and WebSockets through the main backend port (8000)
 await fastify.register(fastifyHttpProxy, {
   upstream: config.GO2RTC_URL,
   prefix: '/go2rtc',
