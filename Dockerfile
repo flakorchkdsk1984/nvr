@@ -61,10 +61,11 @@ WORKDIR /app
 COPY --from=backend-builder /build/backend/dist /app/web/backend/dist
 COPY --from=frontend-builder /build/frontend/dist /app/web/frontend/dist
 
-# Copy recorder script and entrypoint
+# Copy recorder script and entrypoint (sanitizing CRLF line endings)
 COPY scripts/recorder.sh /app/scripts/recorder.sh
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/scripts/recorder.sh /app/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /app/scripts/recorder.sh /app/docker-entrypoint.sh && \
+    chmod +x /app/scripts/recorder.sh /app/docker-entrypoint.sh
 
 # Default storage directories
 RUN mkdir -p /app/recordings /app/data/run /app/cache/thumbs
