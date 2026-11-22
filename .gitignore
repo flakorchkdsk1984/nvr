@@ -9,8 +9,12 @@ bin/
 recordings/
 cache/
 data/run/
+data/preroll/
+data/events/
 data/*.pid
 data/*.log
+data/*.tmp
+data/*.sqlite*
 data/web.log
 data/recorder.log
 data/go2rtc.log
