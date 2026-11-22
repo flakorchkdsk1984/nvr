@@ -31,8 +31,12 @@ mkdir -p "$RECORDINGS_DIR" "$DATA_DIR/run" "$DATA_DIR/events" "$DATA_DIR/preroll
 # Dynamically generate go2rtc.yaml based on configured camera IP & credentials
 cat <<EOF > /app/go2rtc.yaml
 streams:
-  c2l_hd: eseecloud://${CAMERA_USER}:${CAMERA_PASS}@${CAMERA_HOST}:${CAMERA_PORT}/livestream/11
-  c2l_sd: eseecloud://${CAMERA_USER}:${CAMERA_PASS}@${CAMERA_HOST}:${CAMERA_PORT}/livestream/12
+  c2l_hd:
+    - eseecloud://${CAMERA_USER}:${CAMERA_PASS}@${CAMERA_HOST}:${CAMERA_PORT}/livestream/11
+    - ffmpeg:c2l_hd#video=copy#audio=opus
+  c2l_sd:
+    - eseecloud://${CAMERA_USER}:${CAMERA_PASS}@${CAMERA_HOST}:${CAMERA_PORT}/livestream/12
+    - ffmpeg:c2l_sd#video=copy#audio=opus
 
 api:
   listen: ":1984"

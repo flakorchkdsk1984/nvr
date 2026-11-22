@@ -4,6 +4,17 @@
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
+# Stage 0: Build Patched go2rtc with EseeCloud AAC Support
+# ------------------------------------------------------------------------------
+FROM golang:alpine AS go2rtc-builder
+RUN apk add --no-cache git
+WORKDIR /src
+RUN git clone --depth 1 --branch v1.9.15 https://github.com/AlexxIT/go2rtc.git .
+COPY patches/eseecloud_aac.patch /tmp/
+RUN git apply /tmp/eseecloud_aac.patch
+RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /go2rtc
+
+# ------------------------------------------------------------------------------
 # Stage 1: Build Angular Frontend
 # ------------------------------------------------------------------------------
 FROM node:22-bookworm-slim AS frontend-builder
@@ -41,13 +52,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Install go2rtc streaming binary (supports amd64 and arm64)
-ARG TARGETARCH=amd64
-RUN GO2RTC_ARCH="${TARGETARCH}" && \
-    if [ "$TARGETARCH" = "x86_64" ]; then GO2RTC_ARCH="amd64"; fi && \
-    if [ "$TARGETARCH" = "aarch64" ]; then GO2RTC_ARCH="arm64"; fi && \
-    curl -fsSL -o /usr/local/bin/go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.15/go2rtc_linux_${GO2RTC_ARCH}" && \
-    chmod +x /usr/local/bin/go2rtc
+# Install patched go2rtc streaming binary with EseeCloud AAC support
+COPY --from=go2rtc-builder /go2rtc /usr/local/bin/go2rtc
+RUN chmod +x /usr/local/bin/go2rtc
 
 WORKDIR /app
 

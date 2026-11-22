@@ -49,7 +49,7 @@ services:
       # ========================================================================
       - PORT=8000
       - AUTH_USER=admin
-      - AUTH_PASS_HASH=$$2a$$10$$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu # Password por defecto: admin123
+      - 'AUTH_PASS_HASH=$$2a$$10$$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu' # Password por defecto: admin123
       - JWT_SECRET=super_secret_jwt_c2l_nvr_key_2026_xyz987
 
       # ========================================================================

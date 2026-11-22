@@ -1,0 +1,55 @@
+diff --git a/pkg/eseecloud/eseecloud.go b/pkg/eseecloud/eseecloud.go
+index 05209d2..8a4e8d2 100644
+--- a/pkg/eseecloud/eseecloud.go
++++ b/pkg/eseecloud/eseecloud.go
+@@ -9,6 +9,7 @@ import (
+ 	"regexp"
+ 	"strings"
+ 
++	"github.com/AlexxIT/go2rtc/pkg/aac"
+ 	"github.com/AlexxIT/go2rtc/pkg/core"
+ 	"github.com/AlexxIT/go2rtc/pkg/h264/annexb"
+ 	"github.com/pion/rtp"
+@@ -103,6 +104,22 @@ func (p *Producer) probe() error {
+ 				},
+ 			})
+ 			p.audioPT = byte(core.Atoi(item[2]))
++
++		case "AAC":
++			p.Medias = append(p.Medias, &core.Media{
++				Kind:      core.KindAudio,
++				Direction: core.DirectionRecvonly,
++				Codecs: []*core.Codec{
++					{
++						Name:        core.CodecAAC,
++						ClockRate:   8000,
++						Channels:    1,
++						FmtpLine:    aac.FMTP + "1588",
++						PayloadType: core.PayloadTypeRAW,
++					},
++				},
++			})
++			p.audioPT = byte(core.Atoi(item[2]))
+ 		}
+ 	}
+ 
+@@ -146,6 +163,19 @@ func (p *Producer) Start() error {
+ 					},
+ 					Payload: pkt.Payload,
+ 				}
++			case core.CodecAAC:
++				payload := pkt.Payload
++				if aac.IsADTS(payload) {
++					payload = payload[aac.ADTSHeaderLen(payload):]
++				}
++				pkt = &rtp.Packet{
++					Header: rtp.Header{
++						Version:        aac.RTPPacketVersionAAC,
++						SequenceNumber: pkt.SequenceNumber,
++						Timestamp:      uint32(uint64(pkt.Timestamp) * 8000 / 1000000),
++					},
++					Payload: payload,
++				}
+ 			}
+ 			recv.WriteRTP(pkt)
+ 		}

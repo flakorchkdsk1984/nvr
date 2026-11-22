@@ -1,6 +1,10 @@
 streams:
-  c2l_hd: eseecloud://admin:@192.168.1.40:80/livestream/11
-  c2l_sd: eseecloud://admin:@192.168.1.40:80/livestream/12
+  c2l_hd:
+    - eseecloud://admin:@192.168.1.40:80/livestream/11
+    - ffmpeg:c2l_hd#video=copy#audio=opus
+  c2l_sd:
+    - eseecloud://admin:@192.168.1.40:80/livestream/12
+    - ffmpeg:c2l_sd#video=copy#audio=opus
 
 api:
   listen: ":1984"
