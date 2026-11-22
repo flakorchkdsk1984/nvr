@@ -189,10 +189,29 @@
             </div>
           </div>
 
-          <!-- Native Live Player -->
-          <div class="live-player-wrapper">
+          <!-- Native Live Player with Digital Zoom & Drag-to-Pan -->
+          <div
+            class="live-player-wrapper"
+            (wheel)="onPlayerWheel($event)"
+            (mousedown)="startPan($event)"
+            (mousemove)="doPan($event)"
+            (mouseup)="stopPan()"
+            (mouseleave)="stopPan()"
+            (touchstart)="startTouchPan($event)"
+            (touchmove)="doTouchPan($event)"
+            (touchend)="stopPan()"
+            (dblclick)="onPlayerDblClick($event)"
+            [style.cursor]="digitalZoom() > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default'"
+            [title]="digitalZoom() > 1 ? 'Arrastra para encuadrar | Rueda del ratón para zoom | Doble clic para reiniciar' : 'Rueda del ratón o doble clic para hacer zoom digital'"
+          >
             @if (streamMode() === 'snapshot') {
-              <img [src]="snapshotLoopUrl()" class="live-snapshot-img" alt="Stream en vivo Snapshot" />
+              <img
+                [src]="snapshotLoopUrl()"
+                class="live-snapshot-img"
+                alt="Stream en vivo Snapshot"
+                [style.transform]="'scale(' + digitalZoom() + ') translate(' + (zoomPanX() / digitalZoom()) + 'px, ' + (zoomPanY() / digitalZoom()) + 'px)'"
+                [style.transition]="isPanning ? 'none' : 'transform 0.15s ease-out'"
+              />
             } @else {
               <video
                 #liveVideo
@@ -201,6 +220,8 @@
                 playsinline
                 controls
                 class="live-video-element"
+                [style.transform]="'scale(' + digitalZoom() + ') translate(' + (zoomPanX() / digitalZoom()) + 'px, ' + (zoomPanY() / digitalZoom()) + 'px)'"
+                [style.transition]="isPanning ? 'none' : 'transform 0.15s ease-out'"
               ></video>
             }
 
@@ -209,6 +230,11 @@
               <span class="hud-tag live"><span class="dot"></span> EN VIVO</span>
               <span class="hud-tag quality">{{ selectedStream() === 'c2l_hd' ? '720p HD' : '360p SD' }}</span>
               <span class="hud-tag stats">{{ liveStats().status }} | Latencia: {{ liveStats().latency }}</span>
+              @if (digitalZoom() > 1.0) {
+                <span class="hud-tag zoom-tag" (click)="resetZoom()" title="Clic para reiniciar zoom a 1.0x">
+                  🔍 Zoom {{ digitalZoom().toFixed(1) }}x ✕
+                </span>
+              }
             </div>
           </div>
         </section>
@@ -295,21 +321,27 @@
               <div></div>
             </div>
 
-            <!-- Optical Zoom -->
+            <!-- Zoom Controls (Digital + Óptico) -->
             <div class="zoom-controls">
               <button
                 class="zoom-btn"
-                (mousedown)="startMove('zoomin')"
-                (mouseup)="stopHolding()"
-                title="Acercar (Zoom In)"
+                (click)="zoomIn()"
+                title="Acercar Zoom (+)"
               >
                 🔍 +
               </button>
               <button
+                class="zoom-btn zoom-level-btn"
+                [class.active-zoom]="digitalZoom() > 1"
+                (click)="resetZoom()"
+                title="Zoom actual (clic para reiniciar a 1.0x)"
+              >
+                {{ digitalZoom().toFixed(1) }}x
+              </button>
+              <button
                 class="zoom-btn"
-                (mousedown)="startMove('zoomout')"
-                (mouseup)="stopHolding()"
-                title="Alejar (Zoom Out)"
+                (click)="zoomOut()"
+                title="Alejar Zoom (−)"
               >
                 🔍 −
               </button>

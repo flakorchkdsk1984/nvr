@@ -71,6 +71,14 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   isHolding = false;
   holdInterval: any = null;
 
+  // Digital Zoom & Pan state
+  digitalZoom = signal<number>(1.0);
+  zoomPanX = signal<number>(0);
+  zoomPanY = signal<number>(0);
+  isPanning = false;
+  panStartX = 0;
+  panStartY = 0;
+
   // Preset editor modal
   editingPreset = signal<PresetInfo | null>(null);
   presetNameInput = '';
@@ -472,6 +480,102 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.isHolding = false;
     clearInterval(this.holdInterval);
     this.nvr.movePtz('stop', 0, this.ptzSpeed).subscribe();
+  }
+
+  // Zoom Controls (Digital smooth scaling + Hardware CGI command)
+  zoomIn(step: number = 0.5) {
+    const current = this.digitalZoom();
+    const next = Math.min(5.0, Math.round((current + step) * 10) / 10);
+    this.digitalZoom.set(next);
+    this.clampPan();
+    this.nvr.movePtz('zoomin', 1, this.ptzSpeed).subscribe({ error: () => {} });
+  }
+
+  zoomOut(step: number = 0.5) {
+    const current = this.digitalZoom();
+    const next = Math.max(1.0, Math.round((current - step) * 10) / 10);
+    this.digitalZoom.set(next);
+    if (next === 1.0) {
+      this.zoomPanX.set(0);
+      this.zoomPanY.set(0);
+    } else {
+      this.clampPan();
+    }
+    this.nvr.movePtz('zoomout', 1, this.ptzSpeed).subscribe({ error: () => {} });
+  }
+
+  resetZoom() {
+    this.digitalZoom.set(1.0);
+    this.zoomPanX.set(0);
+    this.zoomPanY.set(0);
+    this.nvr.movePtz('stop', 0, this.ptzSpeed).subscribe({ error: () => {} });
+  }
+
+  onPlayerWheel(event: WheelEvent) {
+    event.preventDefault();
+    if (event.deltaY < 0) {
+      this.zoomIn(0.25);
+    } else if (event.deltaY > 0) {
+      this.zoomOut(0.25);
+    }
+  }
+
+  onPlayerDblClick(event: MouseEvent) {
+    event.preventDefault();
+    if (this.digitalZoom() > 1.0) {
+      this.resetZoom();
+    } else {
+      this.zoomIn(1.0);
+    }
+  }
+
+  startPan(event: MouseEvent) {
+    if (this.digitalZoom() <= 1.0 || event.button !== 0) return;
+    event.preventDefault();
+    this.isPanning = true;
+    this.panStartX = event.clientX - this.zoomPanX();
+    this.panStartY = event.clientY - this.zoomPanY();
+  }
+
+  doPan(event: MouseEvent) {
+    if (!this.isPanning || this.digitalZoom() <= 1.0) return;
+    event.preventDefault();
+    this.zoomPanX.set(event.clientX - this.panStartX);
+    this.zoomPanY.set(event.clientY - this.panStartY);
+    this.clampPan();
+  }
+
+  stopPan() {
+    this.isPanning = false;
+  }
+
+  startTouchPan(event: TouchEvent) {
+    if (this.digitalZoom() <= 1.0 || event.touches.length !== 1) return;
+    this.isPanning = true;
+    this.panStartX = event.touches[0].clientX - this.zoomPanX();
+    this.panStartY = event.touches[0].clientY - this.zoomPanY();
+  }
+
+  doTouchPan(event: TouchEvent) {
+    if (!this.isPanning || this.digitalZoom() <= 1.0 || event.touches.length !== 1) return;
+    this.zoomPanX.set(event.touches[0].clientX - this.panStartX);
+    this.zoomPanY.set(event.touches[0].clientY - this.panStartY);
+    this.clampPan();
+  }
+
+  private clampPan() {
+    const zoom = this.digitalZoom();
+    if (zoom <= 1.0) {
+      this.zoomPanX.set(0);
+      this.zoomPanY.set(0);
+      return;
+    }
+    const maxPanX = (zoom - 1) * 350;
+    const maxPanY = (zoom - 1) * 200;
+    const curX = this.zoomPanX();
+    const curY = this.zoomPanY();
+    this.zoomPanX.set(Math.max(-maxPanX, Math.min(maxPanX, curX)));
+    this.zoomPanY.set(Math.max(-maxPanY, Math.min(maxPanY, curY)));
   }
 
   // Presets

@@ -301,6 +301,19 @@
           }
         }
 
+        &.zoom-tag {
+          pointer-events: auto;
+          background: rgba(37, 99, 235, 0.9);
+          border-color: rgba(96, 165, 250, 0.8);
+          cursor: pointer;
+          transition: all 0.2s ease;
+
+          &:hover {
+            background: rgba(220, 38, 38, 0.9);
+            border-color: rgba(248, 113, 113, 0.9);
+          }
+        }
+
         &.quality {
           background: rgba(30, 41, 59, 0.85);
           border-color: rgba(255, 255, 255, 0.1);
@@ -402,22 +415,45 @@
 
     .zoom-controls {
       display: flex;
-      gap: 12px;
+      gap: 8px;
+      width: 100%;
 
       .zoom-btn {
-        padding: 8px 16px;
+        flex: 1;
+        padding: 8px 12px;
         background-color: var(--bg-main);
         border: 1px solid var(--border-color);
         color: var(--text-main);
         font-weight: 600;
         font-size: 0.95rem;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
 
         &:hover {
           background-color: var(--primary);
           color: #fff;
+          border-color: var(--primary);
         }
         &:active {
           transform: scale(0.95);
+        }
+
+        &.zoom-level-btn {
+          font-variant-numeric: tabular-nums;
+          font-size: 0.9rem;
+          min-width: 54px;
+          background: rgba(255, 255, 255, 0.05);
+
+          &.active-zoom {
+            background-color: rgba(37, 99, 235, 0.25);
+            border-color: #3b82f6;
+            color: #60a5fa;
+            font-weight: 700;
+          }
         }
       }
     }
