@@ -228,8 +228,16 @@ Todos los endpoints (excepto `/api/health` y `/api/auth/login`) requieren autent
 | `POST` | `/api/auth/login` | `{ username, password }` | Inicio de sesión (genera cookie segura JWT) |
 | `POST` | `/api/auth/logout` | - | Cierre de sesión y limpieza de cookie |
 | `GET` | `/api/auth/me` | - | Validar sesión de usuario |
+| `GET` | `/api/light` | - | Obtiene el estado actual de la luz / foco de la cámara |
+| `POST` | `/api/light` | `{ on: boolean }` | Enciende o apaga la luz / foco de la cámara (Aux 1 Pelco-D) |
+| `GET` | `/api/motion/status` | - | Consulta el estado activo, score actual e intensidad de movimiento |
+| `GET` | `/api/events` | `?date=YYYY-MM-DD&limit=50` | Lista de eventos de movimiento registrados en SQLite |
+| `GET` | `/api/events/:id/snapshot` | - | Captura JPEG tomada al inicio del evento de movimiento |
+| `GET` | `/api/events/live` | - | Flujo SSE (Server-Sent Events) en vivo para alertas de movimiento |
+| `GET` | `/api/recorder/mode` | - | Consulta modo actual (`continuous`, `motion`, `paused`) y estado del buffer |
+| `POST` | `/api/recorder/mode` | `{ mode: "continuous"\|"motion"\|"paused" }` | Cambio de modo de grabación en caliente |
 | `POST` | `/api/recorder/start` | - | Inicia el servicio de grabación continua 24/7 |
-| `POST` | `/api/recorder/stop` | - | Detiene el servicio de grabación continua 24/7 |
+| `POST` | `/api/recorder/stop` | - | Detiene el servicio de grabación |
 | `GET` | `/api/config` | - | Consulta la IP de la cámara y rutas configuradas |
 | `POST` | `/api/config` | `{ cameraHost, cameraPort, recordingsDir?, retentionDays? }` | Actualiza la IP de la cámara o almacenamiento en caliente |
 | `POST` | `/api/ptz/move` | `{ action, step, speed }` | Movimiento PTZ (`up`, `down`, `left`, `right`, `zoomin`, `zoomout`, `stop`) |
@@ -248,16 +256,47 @@ Todos los endpoints (excepto `/api/health` y `/api/auth/login`) requieren autent
 
 ---
 
-## 7. Políticas de Grabación y Retención
+## 7. Modos de Grabación y Políticas de Almacenamiento
 
-- **Modo de Grabación:** Copia directa (`-c copy`) en contenedor MP4 (`-movflags +faststart`). **Cero consumo de CPU por recodificación**.
-- **Segmentación:** Segmentos automáticos de 15 minutos (900 segundos) nombrados cronológicamente:
-  `recordings/YYYY-MM-DD/c2l_YYYYMMDD_HHMMSS.mp4`
-- **Consumo Real Medido:**
-  - Bitrate medio: ~300 kbps (fluctúa entre 30 y 60 KB/s según movimiento).
-  - Espacio por hora: ~135 MB / hora.
-  - Espacio por día: **~3.24 GB / día**.
-  - **Para 7 días de retención:** Tan solo **~22.7 GB**.
+El NVR incluye **3 modos de grabación** intercambiables en caliente desde el panel web o por API:
+
+1. **Continuo 24/7 (`continuous`):**
+   - Grabación ininterrumpida en segmentos de 15 minutos (900 s).
+   - Copia de flujo sin recodificación (`-c copy`) y encabezado al inicio (`-movflags +faststart`).
+   - Cero uso de CPU en transcodificación.
+
+2. **Solo con Movimiento (`motion`):**
+   - Mantiene un **buffer circular pre-roll** en memoria/disco con los últimos 10 a 12 segundos previos al evento.
+   - Al detectar movimiento, captura el flujo en vivo y extiende la grabación durante todo el evento más **15 segundos de post-roll**.
+   - Concatena automáticamente el buffer pre-roll con el segmento grabado mediante demuxer sin re-codificación, generando clips completos `c2l_YYYYMMDD_HHMMSS.mp4` listos para reproducir.
+
+3. **Pausado (`paused`):**
+   - Detiene todos los procesos de grabación de video ahorrando disco cuando no se requiere vigilancia.
+
+### 7.1. Comparativa de Consumo de Almacenamiento
+
+| Modo de Grabación | Tasa de Bits Media | Consumo por Hora | Consumo por Día | Retención 7 Días | Ahorro de Disco |
+|---|---|---|---|---|---|
+| **Continuo 24/7** | ~300 - 450 kbps | ~135 - 180 MB / h | **~3.2 - 4.3 GB / día** | **~23 - 30 GB** | Referencia (0%) |
+| **Solo Movimiento (10% actividad)** | Variable | ~15 - 25 MB / h | **~0.35 - 0.6 GB / día** | **~2.5 - 4.2 GB** | **~85% - 90%** |
+| **Solo Movimiento (25% actividad)** | Variable | ~35 - 60 MB / h | **~0.85 - 1.4 GB / día** | **~6.0 - 9.8 GB** | **~70% - 75%** |
+
+---
+
+## 8. Detección de Movimiento y Control de Foco
+
+### 8.1. Detección de Movimiento por Software
+- Consume el sub-stream SD (`rtsp://127.0.0.1:8554/c2l_sd`) con FFmpeg a 2 fps y resolución reducida a 64x36 en escala de grises (`format=gray`).
+- Tamaño de fotograma: 2,304 bytes. Consumo de red: ~4.6 KB/s.
+- Algoritmo diferencial en memoria con cómputo en menos de 0.05 ms por frame.
+- Al activarse, captura automáticamente una instantánea JPEG y registra el evento en la base de datos SQLite integrada (`node:sqlite`).
+- Notifica en tiempo real al navegador vía Server-Sent Events (SSE) con badge de alerta visual en el reproductor.
+
+### 8.2. Control de Luz / Foco de la Cámara
+- Basado en comandos Pelco-D auxiliares documentados para firmware Xiongmai/Hi3510:
+  - **Preset 64:** Encendido de Luz / Iluminador Aux 1.
+  - **Preset 65:** Apagado de Luz / Iluminador Aux 1.
+- Conmutador interactivo en el panel En Vivo con sincronización periódica de estado.
 
 ---
 
