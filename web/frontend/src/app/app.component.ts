@@ -13,7 +13,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import Hls from 'hls.js';
 import { NvrService } from './services/nvr.service';
-import { SegmentInfo, PresetInfo } from './models/nvr.models';
+import { SegmentInfo, PresetInfo, MotionEvent } from './models/nvr.models';
 
 @Component({
   selector: 'app-root',
@@ -26,7 +26,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   public nvr = inject(NvrService);
 
   // Tab navigation
-  activeTab = signal<'live' | 'recordings' | 'system'>('live');
+  activeTab = signal<'live' | 'recordings' | 'events' | 'system'>('live');
 
   // Login form
   loginUser = '';
@@ -35,6 +35,15 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Recorder control
   recorderLoading = signal<boolean>(false);
+
+  // Light control
+  lightLoading = signal<boolean>(false);
+
+  // Selected snapshot for preview modal
+  selectedSnapshotModal = signal<{ url: string; title: string } | null>(null);
+
+  // Motion stream cleanup
+  private cleanupMotionStream?: () => void;
 
   // Live stream state
   selectedStream = signal<'c2l_hd' | 'c2l_sd'>('c2l_hd');
@@ -104,6 +113,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
         this.nvr.refreshAll();
         this.loadConfig();
         this.startHealthPolling();
+        this.cleanupMotionStream = this.nvr.initMotionLiveStream();
         setTimeout(() => this.initLivePlayer(), 150);
       }
     });
@@ -117,6 +127,10 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   ngOnDestroy() {
     this.isDestroyed = true;
+    if (this.cleanupMotionStream) {
+      this.cleanupMotionStream();
+      this.cleanupMotionStream = undefined;
+    }
     this.stopHealthPolling();
     this.stopHolding();
     this.destroyLiveStream();
@@ -128,8 +142,10 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       if (this.nvr.currentUser()) {
         this.nvr.fetchHealth().subscribe();
         this.nvr.fetchStorage().subscribe();
+        this.nvr.fetchLight().subscribe();
+        this.nvr.fetchRecorderStatus().subscribe();
       }
-    }, 10000);
+    }, 8000);
   }
 
   stopHealthPolling() {
@@ -150,6 +166,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       next: () => {
         this.loginPass = '';
         this.startHealthPolling();
+        this.cleanupMotionStream = this.nvr.initMotionLiveStream();
         setTimeout(() => this.initLivePlayer(), 150);
       },
       error: (err) => {
@@ -159,6 +176,10 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   onLogout() {
+    if (this.cleanupMotionStream) {
+      this.cleanupMotionStream();
+      this.cleanupMotionStream = undefined;
+    }
     this.destroyLiveStream();
     this.nvr.logout().subscribe(() => {
       this.stopHealthPolling();
@@ -166,29 +187,62 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   // Navigation & Tabs
-  selectTab(tab: 'live' | 'recordings' | 'system') {
+  selectTab(tab: 'live' | 'recordings' | 'events' | 'system') {
     if (this.activeTab() === 'live' && tab !== 'live') {
       this.destroyLiveStream();
     }
     this.activeTab.set(tab);
     if (tab === 'live') {
       setTimeout(() => this.initLivePlayer(), 150);
+    } else if (tab === 'events') {
+      this.nvr.fetchEvents().subscribe();
     }
   }
 
-  // Recorder Control
-  toggleRecorder() {
-    const isActive = this.nvr.health()?.recorder?.active;
+  // Light Control
+  toggleLight() {
+    if (this.lightLoading()) return;
+    this.lightLoading.set(true);
+    const target = !this.nvr.light().on;
+    this.nvr.setLight(target).subscribe({
+      next: () => {
+        this.lightLoading.set(false);
+      },
+      error: (err) => {
+        console.error('Error al cambiar luz:', err);
+        this.lightLoading.set(false);
+      },
+    });
+  }
+
+  // Recorder Mode Control
+  setRecordingMode(mode: 'continuous' | 'motion' | 'paused') {
     this.recorderLoading.set(true);
-    const req = isActive ? this.nvr.stopRecorder() : this.nvr.startRecorder();
-    req.subscribe({
+    this.nvr.setRecorderMode(mode).subscribe({
       next: () => {
         this.recorderLoading.set(false);
       },
-      error: () => {
+      error: (err) => {
+        console.error('Error al cambiar modo de grabación:', err);
         this.recorderLoading.set(false);
       },
     });
+  }
+
+  // Snapshot modal for events
+  openSnapshotModal(url: string, title: string) {
+    this.selectedSnapshotModal.set({ url, title });
+  }
+
+  closeSnapshotModal() {
+    this.selectedSnapshotModal.set(null);
+  }
+
+  // Legacy Recorder Control (toggles continuous <-> paused)
+  toggleRecorder() {
+    const isPaused = this.nvr.recorderStatus().mode === 'paused';
+    const nextMode = isPaused ? 'continuous' : 'paused';
+    this.setRecordingMode(nextMode);
   }
 
   // Stream Controls

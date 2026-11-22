@@ -17,6 +17,10 @@ import { PtzMoveSchema, PtzPresetSchema, executePtzMove, executePtzPreset, getPr
 import { getAvailableDays, scanDateFolder, validateRecordingPath, generateThumbnail, exportClip, deleteSegment, initRecordingsWatcher, DATE_REGEX, } from './recordings.js';
 import { getStorageStats, runRetentionCycle, initRetentionScheduler, } from './storage.js';
 import { checkSystemHealth, getLiveSnapshotBuffer, startRecorder, stopRecorder, updateCameraConfig, } from './system.js';
+import { getLightState, setCameraLight } from './light.js';
+import { getEvents, getEventSnapshot } from './events.js';
+import { getMotionEngine, startMotionEngine } from './motion.js';
+import { getRecorderManager, initRecorderManager } from './recorder-manager.js';
 const fastify = Fastify({
     logger: false,
 });
@@ -219,6 +223,113 @@ fastify.register(async (protectedRoutes) => {
             return reply.status(400).send({ error: err.message });
         }
     });
+    // ==========================================
+    // LIGHT CONTROL
+    // ==========================================
+    protectedRoutes.get('/api/light', async () => {
+        return getLightState();
+    });
+    protectedRoutes.post('/api/light', async (req, reply) => {
+        const schema = z.object({
+            on: z.boolean(),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Parámetro "on" requerido (booleano)' });
+        }
+        const res = await setCameraLight(parsed.data.on);
+        if (!res.success) {
+            return reply.status(502).send({ error: res.message, state: res.state });
+        }
+        return res;
+    });
+    // ==========================================
+    // MOTION DETECTION & EVENTS
+    // ==========================================
+    protectedRoutes.get('/api/motion/status', async () => {
+        return getMotionEngine().getStatus();
+    });
+    protectedRoutes.get('/api/events', async (req) => {
+        const { date, limit } = req.query;
+        const max = limit ? parseInt(limit, 10) : 100;
+        return getEvents(date, isNaN(max) ? 100 : max);
+    });
+    protectedRoutes.get('/api/events/:id/snapshot', async (req, reply) => {
+        const { id } = req.params;
+        const idNum = parseInt(id, 10);
+        if (isNaN(idNum)) {
+            return reply.status(400).send({ error: 'ID de evento inválido' });
+        }
+        const snap = getEventSnapshot(idNum);
+        if (!snap) {
+            return reply.status(404).send({ error: 'Captura no encontrada para este evento' });
+        }
+        reply.header('Content-Type', snap.contentType);
+        reply.header('Cache-Control', 'public, max-age=86400');
+        return reply.send(snap.buffer);
+    });
+    // SSE Live Stream for Motion Events
+    protectedRoutes.get('/api/events/live', async (req, reply) => {
+        reply.raw.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+        });
+        const engine = getMotionEngine();
+        reply.raw.write(`data: ${JSON.stringify({ type: 'init', status: engine.getStatus() })}\n\n`);
+        const onStart = (event) => {
+            try {
+                reply.raw.write(`data: ${JSON.stringify({ type: 'motion_start', event })}\n\n`);
+            }
+            catch { }
+        };
+        const onActive = (data) => {
+            try {
+                reply.raw.write(`data: ${JSON.stringify({ type: 'motion_active', data })}\n\n`);
+            }
+            catch { }
+        };
+        const onEnd = (event) => {
+            try {
+                reply.raw.write(`data: ${JSON.stringify({ type: 'motion_end', event })}\n\n`);
+            }
+            catch { }
+        };
+        engine.on('motion-start', onStart);
+        engine.on('motion-active', onActive);
+        engine.on('motion-end', onEnd);
+        const keepalive = setInterval(() => {
+            try {
+                reply.raw.write(': ping\n\n');
+            }
+            catch { }
+        }, 15000);
+        req.raw.on('close', () => {
+            clearInterval(keepalive);
+            engine.off('motion-start', onStart);
+            engine.off('motion-active', onActive);
+            engine.off('motion-end', onEnd);
+        });
+        return reply;
+    });
+    // ==========================================
+    // RECORDER MODES
+    // ==========================================
+    protectedRoutes.get('/api/recorder/mode', async () => {
+        return getRecorderManager().getStatus();
+    });
+    protectedRoutes.post('/api/recorder/mode', async (req, reply) => {
+        const schema = z.object({
+            mode: z.enum(['continuous', 'motion', 'paused']),
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Modo inválido. Valores permitidos: continuous, motion, paused' });
+        }
+        const status = await getRecorderManager().setMode(parsed.data.mode);
+        return { success: true, status };
+    });
     // Recorder Start / Stop
     protectedRoutes.post('/api/recorder/start', async () => {
         return startRecorder();
@@ -310,6 +421,8 @@ else {
 export async function startServer() {
     initRecordingsWatcher();
     initRetentionScheduler();
+    startMotionEngine();
+    initRecorderManager();
     try {
         await fastify.listen({ port: config.PORT, host: '0.0.0.0' });
         addLog('info', `NVR Backend listening on http://0.0.0.0:${config.PORT}`);

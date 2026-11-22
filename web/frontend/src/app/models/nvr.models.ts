@@ -58,3 +58,28 @@ export interface LogEntry {
   message: string;
   details?: any;
 }
+
+export interface LightState {
+  on: boolean;
+  mode: 'manual' | 'auto';
+  updatedAt: string;
+}
+
+export interface MotionEvent {
+  id: number;
+  start_time: string;
+  end_time: string | null;
+  duration_s: number;
+  score: number;
+  snapshot_path: string | null;
+  source: string;
+  created_at: string;
+}
+
+export interface RecorderStatus {
+  mode: 'continuous' | 'motion' | 'paused';
+  active: boolean;
+  isRecordingMotion: boolean;
+  currentSegment?: string;
+  prerollBufferCount: number;
+}

@@ -5,6 +5,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { config } from './config.js';
 import { addLog } from './logger.js';
+import { getRecorderManager } from './recorder-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,7 @@ export interface HealthStatus {
   };
   recorder: {
     active: boolean;
+    mode?: string;
     lastSegmentRecorded?: string;
   };
 }
@@ -69,14 +71,8 @@ export async function checkSystemHealth(): Promise<HealthStatus> {
     go2rtcOnline = false;
   }
 
-  // Check recorder process
-  let recorderActive = false;
-  try {
-    const { stdout } = await execAsync("pgrep -x ffmpeg").catch(() => ({ stdout: '' }));
-    recorderActive = stdout.trim().length > 0;
-  } catch {
-    recorderActive = false;
-  }
+  const recStatus = getRecorderManager().getStatus();
+  const recorderActive = recStatus.active;
 
   const overall = (cameraOnline && go2rtcOnline && recorderActive) ? 'ok'
     : (cameraOnline && go2rtcOnline) ? 'degraded' : 'error';
@@ -96,6 +92,7 @@ export async function checkSystemHealth(): Promise<HealthStatus> {
     },
     recorder: {
       active: recorderActive,
+      mode: recStatus.mode,
     },
   };
 }
@@ -126,45 +123,12 @@ export async function getLiveSnapshotBuffer(): Promise<{ buffer: Buffer; content
 
 export async function startRecorder(): Promise<{ success: boolean; message: string; active: boolean }> {
   try {
-    const { stdout } = await execAsync("pgrep -x ffmpeg").catch(() => ({ stdout: '' }));
-    if (stdout.trim().length > 0) {
-      return { success: true, message: 'El grabador ya se encuentra en ejecución', active: true };
-    }
-
-    const possiblePaths = [
-      '/app/scripts/recorder.sh',
-      '/home/chkdsk/c2l_nvr/scripts/recorder.sh',
-      path.resolve(__dirname, '../../../scripts/recorder.sh'),
-      path.resolve(process.cwd(), 'scripts/recorder.sh'),
-    ];
-
-    const scriptPath = possiblePaths.find((p) => fs.existsSync(p));
-    if (!scriptPath) {
-      throw new Error('No se encontró el script recorder.sh en el sistema');
-    }
-
-    const projectRoot = path.dirname(path.dirname(scriptPath));
-    const child = spawn('bash', [scriptPath], {
-      detached: true,
-      stdio: 'ignore',
-      cwd: projectRoot,
-      env: { ...process.env },
-    });
-    child.unref();
-
-    addLog('info', `Grabación 24/7 iniciada desde el panel web (PID: ${child.pid})`);
-
-    // Wait 1.5s for FFmpeg to establish RTSP connection
-    await new Promise((r) => setTimeout(r, 1500));
-
-    // Verify if ffmpeg is running
-    const check = await execAsync("pgrep -x ffmpeg").catch(() => ({ stdout: '' }));
-    const active = check.stdout.trim().length > 0;
-
+    const mgr = getRecorderManager();
+    const status = await mgr.setMode('continuous');
     return {
       success: true,
-      message: active ? 'Grabación 24/7 iniciada correctamente' : 'Iniciando proceso de grabación...',
-      active: true,
+      message: 'Grabación iniciada correctamente',
+      active: status.active,
     };
   } catch (err: any) {
     addLog('error', `Error al iniciar el grabador: ${err.message}`);
@@ -174,49 +138,13 @@ export async function startRecorder(): Promise<{ success: boolean; message: stri
 
 export async function stopRecorder(): Promise<{ success: boolean; message: string; active: boolean }> {
   try {
-    addLog('warn', 'Deteniendo grabación 24/7 desde el panel web...');
-
-    // 1. Read PID from recorder.pid and ffmpeg.pid if available
-    const possiblePidDirs = [
-      path.join(config.DATA_DIR, 'run'),
-      '/app/data/run',
-      '/home/chkdsk/c2l_nvr/data/run',
-    ];
-    for (const pDir of possiblePidDirs) {
-      const recPidFile = path.join(pDir, 'recorder.pid');
-      const ffmpegPidFile = path.join(pDir, 'ffmpeg.pid');
-      if (fs.existsSync(recPidFile)) {
-        try {
-          const pid = parseInt(fs.readFileSync(recPidFile, 'utf8').trim(), 10);
-          if (!isNaN(pid)) process.kill(pid, 'SIGTERM');
-        } catch {}
-        try { fs.unlinkSync(recPidFile); } catch {}
-      }
-      if (fs.existsSync(ffmpegPidFile)) {
-        try {
-          const pid = parseInt(fs.readFileSync(ffmpegPidFile, 'utf8').trim(), 10);
-          if (!isNaN(pid)) process.kill(pid, 'SIGTERM');
-        } catch {}
-        try { fs.unlinkSync(ffmpegPidFile); } catch {}
-      }
-    }
-
-    // 2. Terminate any remaining ffmpeg process safely
-    try {
-      const { stdout } = await execAsync("pgrep -x ffmpeg");
-      const pids = stdout.trim().split(/\s+/).filter(Boolean);
-      for (const p of pids) {
-        const pidNum = parseInt(p, 10);
-        if (!isNaN(pidNum) && pidNum !== process.pid) {
-          try { process.kill(pidNum, 'SIGTERM'); } catch {}
-        }
-      }
-    } catch {}
-
-    await new Promise((r) => setTimeout(r, 800));
-
-    addLog('info', 'Grabación 24/7 detenida correctamente');
-    return { success: true, message: 'Grabación detenida correctamente', active: false };
+    const mgr = getRecorderManager();
+    await mgr.setMode('paused');
+    return {
+      success: true,
+      message: 'Grabación detenida correctamente',
+      active: false,
+    };
   } catch (err: any) {
     addLog('error', `Error al detener el grabador: ${err.message}`);
     return { success: false, message: err.message, active: false };

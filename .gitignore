@@ -15,6 +15,7 @@ data/*.pid
 data/*.log
 data/*.tmp
 data/*.sqlite*
+data/*.json
 data/web.log
 data/recorder.log
 data/go2rtc.log

@@ -68,7 +68,7 @@ RUN sed -i 's/\r$//' /app/scripts/recorder.sh /app/docker-entrypoint.sh && \
     chmod +x /app/scripts/recorder.sh /app/docker-entrypoint.sh
 
 # Default storage directories
-RUN mkdir -p /app/recordings /app/data/run /app/cache/thumbs
+RUN mkdir -p /app/recordings /app/data/run /app/data/events /app/data/preroll /app/cache/thumbs
 
 # Volumes for persistent recordings and app database/logs
 VOLUME ["/app/recordings", "/app/data", "/app/cache"]

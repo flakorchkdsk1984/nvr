@@ -8,6 +8,9 @@ import {
   SegmentInfo,
   StorageStats,
   LogEntry,
+  LightState,
+  MotionEvent,
+  RecorderStatus,
 } from '../models/nvr.models';
 
 @Injectable({
@@ -25,6 +28,11 @@ export class NvrService {
   currentDate = signal<string>('');
   segments = signal<SegmentInfo[]>([]);
   logs = signal<LogEntry[]>([]);
+  light = signal<LightState>({ on: false, mode: 'manual', updatedAt: '' });
+  recorderStatus = signal<RecorderStatus>({ mode: 'continuous', active: false, isRecordingMotion: false, prerollBufferCount: 0 });
+  events = signal<MotionEvent[]>([]);
+  motionActive = signal<boolean>(false);
+  motionScore = signal<number>(0);
 
   // Auth
   checkAuth(): Observable<{ user: string } | null> {
@@ -162,6 +170,80 @@ export class NvrService {
     );
   }
 
+  // Light Control
+  fetchLight(): Observable<LightState> {
+    return this.http.get<LightState>('/api/light').pipe(
+      tap((s) => this.light.set(s))
+    );
+  }
+
+  setLight(on: boolean): Observable<{ success: boolean; state: LightState }> {
+    return this.http.post<{ success: boolean; state: LightState }>('/api/light', { on }).pipe(
+      tap((res) => {
+        if (res.state) this.light.set(res.state);
+      })
+    );
+  }
+
+  // Recorder Modes
+  fetchRecorderStatus(): Observable<RecorderStatus> {
+    return this.http.get<RecorderStatus>('/api/recorder/mode').pipe(
+      tap((s) => this.recorderStatus.set(s))
+    );
+  }
+
+  setRecorderMode(mode: 'continuous' | 'motion' | 'paused'): Observable<{ success: boolean; status: RecorderStatus }> {
+    return this.http.post<{ success: boolean; status: RecorderStatus }>('/api/recorder/mode', { mode }).pipe(
+      tap((res) => {
+        if (res.status) {
+          this.recorderStatus.set(res.status);
+          this.fetchHealth().subscribe();
+        }
+      })
+    );
+  }
+
+  // Motion Events
+  fetchEvents(date?: string): Observable<MotionEvent[]> {
+    const url = date ? `/api/events?date=${date}` : '/api/events';
+    return this.http.get<MotionEvent[]>(url).pipe(
+      tap((list) => this.events.set(list))
+    );
+  }
+
+  initMotionLiveStream(): () => void {
+    const eventSource = new EventSource('/api/events/live');
+
+    eventSource.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'init' && msg.status) {
+          this.motionActive.set(msg.status.active);
+          this.motionScore.set(msg.status.score || 0);
+        } else if (msg.type === 'motion_start' && msg.event) {
+          this.motionActive.set(true);
+          this.motionScore.set(msg.event.score || 0);
+          this.events.update((list) => [msg.event, ...list.filter(e => e.id !== msg.event.id)]);
+        } else if (msg.type === 'motion_active') {
+          this.motionActive.set(true);
+          if (msg.data?.score !== undefined) {
+            this.motionScore.set(msg.data.score);
+          }
+        } else if (msg.type === 'motion_end' && msg.event) {
+          this.motionActive.set(false);
+          this.motionScore.set(0);
+          this.events.update((list) =>
+            list.map((e) => (e.id === msg.event.id ? msg.event : e))
+          );
+        }
+      } catch {}
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }
+
   // Logs
   fetchLogs(limit = 50): Observable<LogEntry[]> {
     return this.http.get<LogEntry[]>(`/api/logs?limit=${limit}`).pipe(
@@ -175,5 +257,8 @@ export class NvrService {
     this.fetchDays().subscribe();
     this.fetchStorage().subscribe();
     this.fetchLogs().subscribe();
+    this.fetchLight().subscribe();
+    this.fetchRecorderStatus().subscribe();
+    this.fetchEvents().subscribe();
   }
 }

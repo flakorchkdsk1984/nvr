@@ -52,6 +52,16 @@ services:
       - AUTH_PASS_HASH=$$2a$$10$$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu # Password por defecto: admin123
       - JWT_SECRET=super_secret_jwt_c2l_nvr_key_2026_xyz987
 
+      # ========================================================================
+      # 4. MODOS DE GRABACIÓN Y DETECCIÓN DE MOVIMIENTO
+      # ========================================================================
+      - RECORDING_MODE=continuous    # continuous | motion | paused
+      - MOTION_SOURCE=software       # software | camera
+      - MOTION_SENSITIVITY=3.0       # Umbral de píxeles modificados (%)
+      - MOTION_COOLDOWN_S=5          # Segundos sin movimiento para cerrar evento
+      - PREROLL_S=10                 # Buffer de pre-grabación en segundos
+      - POSTROLL_S=15                # Grabación extendida post-movimiento
+
     volumes:
       # ========================================================================
       # 4. LUGAR DONDE GUARDAR LAS GRABACIONES EN TU DISCO DURO (HOST)

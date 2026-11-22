@@ -26,7 +26,7 @@ export FFMPEG_PATH="${FFMPEG_PATH:-/usr/bin/ffmpeg}"
 export FFPROBE_PATH="${FFPROBE_PATH:-/usr/bin/ffprobe}"
 
 # Ensure runtime directories exist
-mkdir -p "$RECORDINGS_DIR" "$DATA_DIR/run" "$THUMBS_DIR"
+mkdir -p "$RECORDINGS_DIR" "$DATA_DIR/run" "$DATA_DIR/events" "$DATA_DIR/preroll" "$THUMBS_DIR"
 
 # Dynamically generate go2rtc.yaml based on configured camera IP & credentials
 cat <<EOF > /app/go2rtc.yaml
@@ -78,14 +78,8 @@ until curl -s http://127.0.0.1:1984/api > /dev/null 2>&1; do
 done
 echo "      go2rtc ready on port 1984 (API) and 8554 (RTSP)"
 
-# 2. Start FFmpeg 24/7 continuous segment recorder
-echo "[2/3] Starting FFmpeg 24/7 continuous recorder..."
-/app/scripts/recorder.sh &
-REC_PID=$!
-echo "      FFmpeg recorder started (PID: $REC_PID)"
-
-# 3. Start Node.js Web Backend & Frontend Server
-echo "[3/3] Starting NVR Web Server on port ${PORT}..."
+# 2. Start Node.js Web Backend, Motion Detection & Recorder Manager
+echo "[2/2] Starting NVR Web Server, Motion Engine & Recorder Manager on port ${PORT}..."
 node /app/web/backend/dist/server.js &
 NODE_PID=$!
 

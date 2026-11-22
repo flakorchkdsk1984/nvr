@@ -14,6 +14,12 @@
       <button class="nav-btn" [class.active]="activeTab() === 'recordings'" (click)="selectTab('recordings')">
         <span class="icon">📼</span> Grabaciones
       </button>
+      <button class="nav-btn" [class.active]="activeTab() === 'events'" (click)="selectTab('events')">
+        <span class="icon">⚡</span> Eventos
+        @if (nvr.motionActive()) {
+          <span class="badge-alert-dot pulse-red"></span>
+        }
+      </button>
       <button class="nav-btn" [class.active]="activeTab() === 'system'" (click)="selectTab('system')">
         <span class="icon">⚙️</span> Sistema
       </button>
@@ -31,26 +37,24 @@
         </span>
       }
 
-      <!-- Recorder Control Button -->
-      @if (nvr.health()?.recorder?.active) {
-        <button
-          class="btn-recorder active"
-          (click)="toggleRecorder()"
-          [disabled]="recorderLoading()"
-          title="Click para detener la grabación continua 24/7"
-        >
-          <span class="dot pulse"></span> REC 24/7 (Detener)
-        </button>
-      } @else {
-        <button
-          class="btn-recorder stopped"
-          (click)="toggleRecorder()"
-          [disabled]="recorderLoading()"
-          title="Click para iniciar la grabación continua 24/7"
-        >
-          <span class="dot stopped-dot"></span> REC Pausado (Iniciar)
-        </button>
-      }
+      <!-- Recorder Control Mode Badge/Button -->
+      <button
+        class="btn-recorder"
+        [class.active]="nvr.recorderStatus().active"
+        [class.stopped]="!nvr.recorderStatus().active"
+        [class.motion-rec]="nvr.recorderStatus().mode === 'motion'"
+        (click)="toggleRecorder()"
+        [disabled]="recorderLoading()"
+        [title]="'Modo actual: ' + nvr.recorderStatus().mode + '. Click para alternar.'"
+      >
+        @if (nvr.recorderStatus().mode === 'continuous') {
+          <span class="dot pulse"></span> REC 24/7
+        } @else if (nvr.recorderStatus().mode === 'motion') {
+          <span class="dot" [class.pulse]="nvr.recorderStatus().isRecordingMotion"></span> REC Movimiento
+        } @else {
+          <span class="dot stopped-dot"></span> REC Pausado
+        }
+      </button>
 
       <!-- Storage % -->
       @if (nvr.storage(); as st) {
@@ -168,11 +172,26 @@
 
             <div class="stream-actions">
               <button
+                class="btn-action light-action"
+                [class.light-on]="nvr.light().on"
+                (click)="toggleLight()"
+                [disabled]="lightLoading()"
+                [title]="nvr.light().on ? 'Apagar foco de la cámara' : 'Encender foco de la cámara'"
+              >
+                @if (lightLoading()) {
+                  ⏳ Luz...
+                } @else if (nvr.light().on) {
+                  💡 Foco ON
+                } @else {
+                  💡 Foco OFF
+                }
+              </button>
+              <button
                 class="btn-action recorder-action"
                 [class.recording]="nvr.health()?.recorder?.active"
                 (click)="toggleRecorder()"
                 [disabled]="recorderLoading()"
-                [title]="nvr.health()?.recorder?.active ? 'Detener grabación continua 24/7' : 'Iniciar grabación continua 24/7'"
+                [title]="nvr.health()?.recorder?.active ? 'Detener grabación' : 'Iniciar grabación'"
               >
                 @if (nvr.health()?.recorder?.active) {
                   ⏹ Detener REC
@@ -230,6 +249,16 @@
               <span class="hud-tag live"><span class="dot"></span> EN VIVO</span>
               <span class="hud-tag quality">{{ selectedStream() === 'c2l_hd' ? '720p HD' : '360p SD' }}</span>
               <span class="hud-tag stats">{{ liveStats().status }} | Latencia: {{ liveStats().latency }}</span>
+              @if (nvr.motionActive()) {
+                <span class="hud-tag motion-alert pulse-red">
+                  🚨 MOVIMIENTO ({{ nvr.motionScore().toFixed(1) }}%)
+                </span>
+              }
+              @if (nvr.light().on) {
+                <span class="hud-tag light-status-tag">
+                  💡 Foco Activo
+                </span>
+              }
               @if (digitalZoom() > 1.0) {
                 <span class="hud-tag zoom-tag" (click)="resetZoom()" title="Clic para reiniciar zoom a 1.0x">
                   🔍 Zoom {{ digitalZoom().toFixed(1) }}x ✕
@@ -346,6 +375,52 @@
                 🔍 −
               </button>
             </div>
+          </div>
+
+          <!-- MODE & QUICK ACTIONS -->
+          <div class="recorder-mode-section">
+            <div class="section-title">
+              <h4>📼 Modo de Grabación</h4>
+            </div>
+            <div class="mode-buttons-grid">
+              <button
+                class="btn-mode-choice"
+                [class.active-mode]="nvr.recorderStatus().mode === 'continuous'"
+                (click)="setRecordingMode('continuous')"
+                [disabled]="recorderLoading()"
+              >
+                <span class="icon">🔄</span>
+                <span class="lbl">Continuo 24/7</span>
+              </button>
+              <button
+                class="btn-mode-choice"
+                [class.active-mode]="nvr.recorderStatus().mode === 'motion'"
+                (click)="setRecordingMode('motion')"
+                [disabled]="recorderLoading()"
+              >
+                <span class="icon">⚡</span>
+                <span class="lbl">Solo Movimiento</span>
+              </button>
+              <button
+                class="btn-mode-choice"
+                [class.active-mode]="nvr.recorderStatus().mode === 'paused'"
+                (click)="setRecordingMode('paused')"
+                [disabled]="recorderLoading()"
+              >
+                <span class="icon">⏸</span>
+                <span class="lbl">Pausado</span>
+              </button>
+            </div>
+            @if (nvr.recorderStatus().mode === 'motion') {
+              <div class="mode-info-box">
+                <span class="info-tag">Buffer Pre-roll: {{ nvr.recorderStatus().prerollBufferCount * 3 }}s</span>
+                @if (nvr.recorderStatus().isRecordingMotion) {
+                  <span class="status-tag rec-alert pulse">🔴 Guardando clip...</span>
+                } @else {
+                  <span class="status-tag standby">👁 En espera</span>
+                }
+              </div>
+            }
           </div>
 
           <!-- PRESETS 1..8 -->
@@ -497,7 +572,62 @@
       </div>
     }
 
-    <!-- 3. SYSTEM & STORAGE -->
+    <!-- 3. EVENTS VIEW -->
+    @if (activeTab() === 'events') {
+      <div class="events-layout">
+        <div class="events-header">
+          <div class="title-col">
+            <h3>⚡ Registro de Eventos de Detección</h3>
+            <span class="subtext">Detección de movimiento en tiempo real con capturas e índice SQLite</span>
+          </div>
+          <div class="events-actions">
+            <button class="btn-refresh-events" (click)="nvr.fetchEvents().subscribe()">🔄 Actualizar Eventos</button>
+          </div>
+        </div>
+
+        @if (nvr.events().length === 0) {
+          <div class="no-events-box">
+            <span class="no-events-icon">👁️</span>
+            <h4>No hay eventos de movimiento registrados</h4>
+            <p>Cuando ocurra movimiento en el campo visual de la cámara, los eventos se registrarán con su captura y duración automáticamente.</p>
+          </div>
+        } @else {
+          <div class="events-grid">
+            @for (ev of nvr.events(); track ev.id) {
+              <div class="event-card" [class.in-progress]="!ev.end_time">
+                <div class="event-thumb-box" (click)="openSnapshotModal('/api/events/' + ev.id + '/snapshot', 'Captura Evento #' + ev.id + ' (' + ev.start_time + ')')">
+                  @if (ev.snapshot_path) {
+                    <img [src]="'/api/events/' + ev.id + '/snapshot'" alt="Captura" class="event-thumb-img" loading="lazy" />
+                    <span class="view-badge">🔍 Ver</span>
+                  } @else {
+                    <div class="event-thumb-placeholder">📷 Sin Captura</div>
+                  }
+                  @if (!ev.end_time) {
+                    <span class="live-event-badge pulse-red">EN CURSO</span>
+                  }
+                </div>
+
+                <div class="event-body">
+                  <div class="event-top-line">
+                    <span class="event-id-tag">#{{ ev.id }}</span>
+                    <span class="event-score-tag">Intensidad: {{ ev.score.toFixed(1) }}%</span>
+                  </div>
+                  <div class="event-time-line">
+                    🕒 {{ ev.start_time | date:'yyyy-MM-dd HH:mm:ss' }}
+                  </div>
+                  <div class="event-meta-line">
+                    <span>⏱ Duración: <strong>{{ ev.end_time ? (ev.duration_s + 's') : 'Detectando...' }}</strong></span>
+                    <span class="source-tag">{{ ev.source }}</span>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <!-- 4. SYSTEM & STORAGE -->
     @if (activeTab() === 'system') {
       <div class="system-container">
         <!-- Storage Dashboard -->
@@ -668,6 +798,21 @@
             {{ exportingLoading() ? 'Exportando con FFmpeg...' : 'Generar Clip' }}
           </button>
         }
+      </div>
+    </div>
+  </div>
+}
+
+<!-- SNAPSHOT PREVIEW MODAL -->
+@if (selectedSnapshotModal(); as modal) {
+  <div class="modal-backdrop" (click)="closeSnapshotModal()">
+    <div class="modal-box snapshot-preview-box" (click)="$event.stopPropagation()">
+      <div class="snapshot-modal-header">
+        <h4>📷 {{ modal.title }}</h4>
+        <button class="btn-close-snap" (click)="closeSnapshotModal()">✕</button>
+      </div>
+      <div class="snapshot-modal-body">
+        <img [src]="modal.url" alt="Captura ampliada" class="full-size-snapshot" />
       </div>
     </div>
   </div>
