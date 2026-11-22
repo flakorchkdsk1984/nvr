@@ -49,12 +49,17 @@ import {
   stopRecorder,
   updateCameraConfig,
 } from './system.js';
-import { getLightState, setCameraLight } from './light.js';
+import { getLightState } from './light.js';
+import {
+  getDayNightState,
+  startDayNightPoller,
+  dayNightEvents,
+} from './daynight.js';
 import { getEvents, getEventById, getEventSnapshot } from './events.js';
 import { getMotionEngine, startMotionEngine, stopMotionEngine } from './motion.js';
 import { getRecorderManager, initRecorderManager, RecordingMode } from './recorder-manager.js';
 
-const fastify = Fastify({
+export const fastify = Fastify({
   logger: false,
 });
 
@@ -294,25 +299,28 @@ fastify.register(async (protectedRoutes) => {
   });
 
   // ==========================================
-  // LIGHT CONTROL
+  // DAY / NIGHT & LIGHT
   // ==========================================
+  protectedRoutes.get('/api/daynight', async () => {
+    return getDayNightState();
+  });
+
+  protectedRoutes.post('/api/daynight', async (_req, reply) => {
+    return reply.status(501).send({
+      error: 'El modo día/noche se infiere de la imagen; su conmutación física solo es posible desde la aplicación móvil EseeCloud.',
+      state: getDayNightState(),
+    });
+  });
+
   protectedRoutes.get('/api/light', async () => {
     return getLightState();
   });
 
-  protectedRoutes.post('/api/light', async (req, reply) => {
-    const schema = z.object({
-      on: z.boolean(),
+  protectedRoutes.post('/api/light', async (_req, reply) => {
+    return reply.status(501).send({
+      error: 'El control físico del modo día/noche (luz) solo puede realizarse desde la aplicación móvil EseeCloud; la cámara no admite conmutación por API local.',
+      state: getLightState(),
     });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Parámetro "on" requerido (booleano)' });
-    }
-    const res = await setCameraLight(parsed.data.on);
-    if (!res.success) {
-      return reply.status(502).send({ error: res.message, state: res.state });
-    }
-    return res;
   });
 
   // ==========================================
@@ -353,7 +361,8 @@ fastify.register(async (protectedRoutes) => {
     });
 
     const engine = getMotionEngine();
-    reply.raw.write(`data: ${JSON.stringify({ type: 'init', status: engine.getStatus() })}\n\n`);
+    const initialDayNight = getDayNightState();
+    reply.raw.write(`data: ${JSON.stringify({ type: 'init', status: engine.getStatus(), daynight: initialDayNight })}\n\n`);
 
     const onStart = (event: any) => {
       try { reply.raw.write(`data: ${JSON.stringify({ type: 'motion_start', event })}\n\n`); } catch {}
@@ -364,10 +373,14 @@ fastify.register(async (protectedRoutes) => {
     const onEnd = (event: any) => {
       try { reply.raw.write(`data: ${JSON.stringify({ type: 'motion_end', event })}\n\n`); } catch {}
     };
+    const onDayNightChange = (data: any) => {
+      try { reply.raw.write(`data: ${JSON.stringify({ type: 'daynight_change', data })}\n\n`); } catch {}
+    };
 
     engine.on('motion-start', onStart);
     engine.on('motion-active', onActive);
     engine.on('motion-end', onEnd);
+    dayNightEvents.on('change', onDayNightChange);
 
     const keepalive = setInterval(() => {
       try {
@@ -380,6 +393,7 @@ fastify.register(async (protectedRoutes) => {
       engine.off('motion-start', onStart);
       engine.off('motion-active', onActive);
       engine.off('motion-end', onEnd);
+      dayNightEvents.off('change', onDayNightChange);
     });
 
     return reply;
@@ -506,6 +520,7 @@ export async function startServer() {
   initRecordingsWatcher();
   initRetentionScheduler();
   startMotionEngine();
+  startDayNightPoller();
   initRecorderManager();
 
   try {

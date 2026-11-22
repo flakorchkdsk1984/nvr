@@ -22,6 +22,7 @@ export abstract class MotionSource extends EventEmitter {
   abstract stop(): void;
   abstract isActive(): boolean;
   abstract getStatus(): MotionData;
+  abstract suppressMotion(graceSeconds?: number): void;
 }
 
 const FRAME_WIDTH = 64;
@@ -43,6 +44,27 @@ export class SoftwareMotionSource extends MotionSource {
   private previousFrame: Buffer | null = null;
   private restartTimeout: NodeJS.Timeout | null = null;
   private restartAttempts = 0;
+  private suppressUntil = 0;
+
+  suppressMotion(graceSeconds: number = config.DAYNIGHT_SWITCH_GRACE_S): void {
+    this.suppressUntil = Date.now() + graceSeconds * 1000;
+    this.previousFrame = null;
+    this.frameBuffer = Buffer.alloc(0);
+
+    if (this.cooldownTimer) {
+      clearTimeout(this.cooldownTimer);
+      this.cooldownTimer = null;
+    }
+
+    if (this.inMotion && this.currentEvent) {
+      const finished = recordMotionEnd(this.currentEvent.id, this.maxScore);
+      this.inMotion = false;
+      this.emit('motion-end', finished);
+      this.currentEvent = null;
+    }
+    this.currentScore = 0;
+    addLog('info', `Detección de movimiento suprimida por cambio día/noche (${graceSeconds}s de gracia)`);
+  }
 
   start(): void {
     if (this.isRunning) return;
@@ -157,6 +179,12 @@ export class SoftwareMotionSource extends MotionSource {
   }
 
   private processFrame(currentFrame: Buffer): void {
+    if (Date.now() < this.suppressUntil) {
+      this.previousFrame = Buffer.from(currentFrame);
+      this.currentScore = 0;
+      return;
+    }
+
     if (!this.previousFrame) {
       this.previousFrame = Buffer.from(currentFrame);
       return;
@@ -265,6 +293,8 @@ export class CameraMotionSource extends MotionSource {
   isActive(): boolean {
     return false;
   }
+
+  suppressMotion(_graceSeconds?: number): void {}
 
   getStatus(): MotionData {
     return {

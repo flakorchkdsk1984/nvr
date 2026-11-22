@@ -24,6 +24,24 @@ export class SoftwareMotionSource extends MotionSource {
     previousFrame = null;
     restartTimeout = null;
     restartAttempts = 0;
+    suppressUntil = 0;
+    suppressMotion(graceSeconds = config.DAYNIGHT_SWITCH_GRACE_S) {
+        this.suppressUntil = Date.now() + graceSeconds * 1000;
+        this.previousFrame = null;
+        this.frameBuffer = Buffer.alloc(0);
+        if (this.cooldownTimer) {
+            clearTimeout(this.cooldownTimer);
+            this.cooldownTimer = null;
+        }
+        if (this.inMotion && this.currentEvent) {
+            const finished = recordMotionEnd(this.currentEvent.id, this.maxScore);
+            this.inMotion = false;
+            this.emit('motion-end', finished);
+            this.currentEvent = null;
+        }
+        this.currentScore = 0;
+        addLog('info', `Detección de movimiento suprimida por cambio día/noche (${graceSeconds}s de gracia)`);
+    }
     start() {
         if (this.isRunning)
             return;
@@ -124,6 +142,11 @@ export class SoftwareMotionSource extends MotionSource {
         }
     }
     processFrame(currentFrame) {
+        if (Date.now() < this.suppressUntil) {
+            this.previousFrame = Buffer.from(currentFrame);
+            this.currentScore = 0;
+            return;
+        }
         if (!this.previousFrame) {
             this.previousFrame = Buffer.from(currentFrame);
             return;
@@ -217,6 +240,7 @@ export class CameraMotionSource extends MotionSource {
     isActive() {
         return false;
     }
+    suppressMotion(_graceSeconds) { }
     getStatus() {
         return {
             active: false,

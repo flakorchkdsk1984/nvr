@@ -46,6 +46,11 @@ const ConfigSchema = z.object({
     PREROLL_S: z.coerce.number().default(10),
     POSTROLL_S: z.coerce.number().default(15),
     RECORDING_MODE: z.enum(['continuous', 'motion', 'paused']).default('continuous'),
+    // Day/Night Inference configuration
+    DAYNIGHT_SAT_DAY_THRESHOLD: z.coerce.number().default(5.0),
+    DAYNIGHT_SAT_NIGHT_THRESHOLD: z.coerce.number().default(1.0),
+    DAYNIGHT_SWITCH_GRACE_S: z.coerce.number().default(8),
+    DAYNIGHT_POLL_INTERVAL_S: z.coerce.number().default(10),
     PORT: z.coerce.number().default(8000),
     AUTH_USER: z.string().default('admin'),
     AUTH_PASS_HASH: z.string().default('$2a$10$r2JgGUv9lK7rxZ24sP2cKeQJi1s18b8oLB/UD8D08SNSihPFADscu'),
