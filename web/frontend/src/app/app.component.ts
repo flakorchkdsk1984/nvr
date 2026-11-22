@@ -55,6 +55,15 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   });
   snapshotLoopUrl = signal<string>('/api/snapshot');
 
+  // Audio State & Volume
+  isMuted = signal<boolean>(true);
+  volume = signal<number>(1.0);
+
+  // HUD & OSD Overlay toggle
+  showOverlayIndicators = signal<boolean>(
+    typeof localStorage !== 'undefined' && localStorage.getItem('nvr_show_overlay_indicators') === 'true'
+  );
+
   @ViewChild('liveVideo') liveVideoRef?: ElementRef<HTMLVideoElement>;
   private liveWs?: WebSocket;
   private mediaSource?: MediaSource;
@@ -108,6 +117,20 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   private healthInterval: any = null;
 
   ngOnInit() {
+    try {
+      const storedVol = localStorage.getItem('nvr_audio_volume');
+      if (storedVol !== null) {
+        const v = parseFloat(storedVol);
+        if (!isNaN(v) && v >= 0 && v <= 1) {
+          this.volume.set(v);
+        }
+      }
+      const storedMuted = localStorage.getItem('nvr_audio_muted');
+      if (storedMuted !== null) {
+        this.isMuted.set(storedMuted === 'true');
+      }
+    } catch {}
+
     this.nvr.checkAuth().subscribe((user) => {
       if (user) {
         this.nvr.refreshAll();
@@ -199,7 +222,64 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // Light Control
+  // Audio Controls & Volume
+  toggleMute() {
+    const video = this.liveVideoRef?.nativeElement;
+    const newMuted = !this.isMuted();
+    this.isMuted.set(newMuted);
+    try {
+      localStorage.setItem('nvr_audio_muted', String(newMuted));
+    } catch {}
+
+    if (video) {
+      video.muted = newMuted;
+      video.volume = this.volume();
+      if (!newMuted) {
+        video.play().catch(() => {});
+      }
+    }
+  }
+
+  onVolumeChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const val = parseFloat(input.value);
+    this.volume.set(val);
+    try {
+      localStorage.setItem('nvr_audio_volume', String(val));
+    } catch {}
+
+    const video = this.liveVideoRef?.nativeElement;
+    if (video) {
+      video.volume = val;
+      if (val > 0 && this.isMuted()) {
+        this.toggleMute();
+      }
+    }
+  }
+
+  onUserFirstGesture() {
+    try {
+      const prefMuted = localStorage.getItem('nvr_audio_muted');
+      if (prefMuted === 'false') {
+        const video = this.liveVideoRef?.nativeElement;
+        if (video && video.muted) {
+          video.muted = false;
+          video.volume = this.volume();
+          this.isMuted.set(false);
+        }
+      }
+    } catch {}
+  }
+
+  toggleOverlayIndicators() {
+    const next = !this.showOverlayIndicators();
+    this.showOverlayIndicators.set(next);
+    try {
+      localStorage.setItem('nvr_show_overlay_indicators', String(next));
+    } catch {}
+  }
+
+  // Light Control (Deprecated/Inferred)
   toggleLight() {
     if (this.lightLoading()) return;
     this.lightLoading.set(true);
@@ -274,7 +354,8 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     const video = this.liveVideoRef?.nativeElement;
     if (!video) return;
 
-    video.muted = true;
+    video.muted = this.isMuted();
+    video.volume = this.volume();
     this.liveStats.set({ status: 'Conectando...', latency: '0s', buffer: '0s' });
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -285,7 +366,17 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
 
     ws.onopen = () => {
       this.liveStats.set({ status: 'Sincronizando stream...', latency: '0s', buffer: '0s' });
-      ws.send(JSON.stringify({ type: 'mse', value: 'video/mp4; codecs="avc1.640029"' }));
+      const supportedCodecs = [
+        'avc1.640029', 'avc1.64002A', 'avc1.640033', 'avc1.4de028',
+        'mp4a.40.2', 'opus'
+      ].filter(codec => {
+        try {
+          return typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(`video/mp4; codecs="${codec}"`);
+        } catch {
+          return false;
+        }
+      }).join(',');
+      ws.send(JSON.stringify({ type: 'mse', value: supportedCodecs || 'avc1.640029,mp4a.40.2' }));
     };
 
     const ms = new MediaSource();
@@ -402,7 +493,8 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     const video = this.liveVideoRef?.nativeElement;
     if (!video) return;
 
-    video.muted = true;
+    video.muted = this.isMuted();
+    video.volume = this.volume();
     this.liveStats.set({ status: 'Iniciando HLS...', latency: '~2s', buffer: '-' });
     const hlsUrl = `/go2rtc/api/stream.m3u8?src=${encodeURIComponent(streamName)}`;
 

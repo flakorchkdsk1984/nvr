@@ -171,21 +171,64 @@
             </div>
 
             <div class="stream-actions">
-              <button
-                class="btn-action light-action"
-                [class.light-on]="nvr.light().on"
-                (click)="toggleLight()"
-                [disabled]="lightLoading()"
-                [title]="nvr.light().on ? 'Apagar foco de la cámara' : 'Encender foco de la cámara'"
+              <!-- Day/Night Inferred Mode Chip (Read-Only) -->
+              <div
+                class="daynight-chip"
+                [class.chip-day]="nvr.dayNight().state === 'day'"
+                [class.chip-night]="nvr.dayNight().state === 'night'"
+                [class.chip-unknown]="nvr.dayNight().state === 'unknown'"
+                [title]="'Modo inferido por la imagen (' + (nvr.dayNight().state === 'day' ? 'Color' : 'Infrarrojo B&W') + ' | Sat: ' + nvr.dayNight().saturation.toFixed(1) + '% | Brillo: ' + nvr.dayNight().brightness.toFixed(1) + '%). La conmutación física se realiza desde la app del celular.'"
               >
-                @if (lightLoading()) {
-                  ⏳ Luz...
-                } @else if (nvr.light().on) {
-                  💡 Foco ON
+                @if (nvr.dayNight().state === 'day') {
+                  ☀️ Día
+                } @else if (nvr.dayNight().state === 'night') {
+                  🌙 Noche (IR)
                 } @else {
-                  💡 Foco OFF
+                  ❔ Desconocido
                 }
+              </div>
+
+              <!-- Audio Mute/Unmute & Volume Slider -->
+              <div class="audio-control-group" [class.disabled]="streamMode() === 'snapshot'">
+                <button
+                  class="btn-action audio-btn"
+                  [class.unmuted]="!isMuted() && streamMode() !== 'snapshot'"
+                  (click)="toggleMute()"
+                  [disabled]="streamMode() === 'snapshot'"
+                  [title]="streamMode() === 'snapshot' ? 'El modo snapshot no contiene audio' : (isMuted() ? 'Activar sonido (clic para escuchar)' : 'Silenciar sonido')"
+                >
+                  @if (streamMode() === 'snapshot') {
+                    🔇 Sin Audio
+                  } @else if (isMuted()) {
+                    🔇 Silenciado
+                  } @else {
+                    🔊 Sonido
+                  }
+                </button>
+                @if (streamMode() !== 'snapshot') {
+                  <input
+                    type="range"
+                    class="volume-slider"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    [value]="isMuted() ? 0 : volume()"
+                    (input)="onVolumeChange($event)"
+                    title="Control de volumen"
+                  />
+                }
+              </div>
+
+              <!-- Overlay HUD Toggle Button -->
+              <button
+                class="btn-action hud-toggle-btn"
+                [class.active]="showOverlayIndicators()"
+                (click)="toggleOverlayIndicators()"
+                [title]="showOverlayIndicators() ? 'Ocultar indicadores superpuestos sobre el video' : 'Mostrar indicadores superpuestos sobre el video'"
+              >
+                {{ showOverlayIndicators() ? '👁️ HUD ON' : '👁️ HUD OFF' }}
               </button>
+
               <button
                 class="btn-action recorder-action"
                 [class.recording]="nvr.health()?.recorder?.active"
@@ -220,6 +263,7 @@
             (touchmove)="doTouchPan($event)"
             (touchend)="stopPan()"
             (dblclick)="onPlayerDblClick($event)"
+            (click)="onUserFirstGesture()"
             [style.cursor]="digitalZoom() > 1 ? (isPanning ? 'grabbing' : 'grab') : 'default'"
             [title]="digitalZoom() > 1 ? 'Arrastra para encuadrar | Rueda del ratón para zoom | Doble clic para reiniciar' : 'Rueda del ratón o doble clic para hacer zoom digital'"
           >
@@ -244,25 +288,53 @@
               ></video>
             }
 
-            <!-- Live HUD Overlay -->
-            <div class="live-hud">
-              <span class="hud-tag live"><span class="dot"></span> EN VIVO</span>
-              <span class="hud-tag quality">{{ selectedStream() === 'c2l_hd' ? '720p HD' : '360p SD' }}</span>
-              <span class="hud-tag stats">{{ liveStats().status }} | Latencia: {{ liveStats().latency }}</span>
+            <!-- Bottom-Left Safe Motion Alert (Never blocks top OSD: name & timestamp) -->
+            @if (nvr.motionActive()) {
+              <div class="video-overlay-motion-alert pulse-red">
+                🚨 MOVIMIENTO ({{ nvr.motionScore().toFixed(1) }}%)
+              </div>
+            }
+
+            <!-- Optional HUD on Video (Controlled by toggle, semi-transparent, pointer-events none) -->
+            @if (showOverlayIndicators()) {
+              <div class="video-overlay-hud-corner">
+                <span class="hud-tag live"><span class="dot"></span> VIVO</span>
+                <span class="hud-tag">{{ selectedStream() === 'c2l_hd' ? '720p' : '360p' }}</span>
+                <span class="hud-tag">{{ liveStats().latency }}</span>
+                <span class="hud-tag">{{ nvr.dayNight().state === 'day' ? '☀️ Día' : (nvr.dayNight().state === 'night' ? '🌙 Noche' : '❔') }}</span>
+              </div>
+            }
+
+            @if (digitalZoom() > 1.0) {
+              <span class="video-overlay-zoom-tag" (click)="resetZoom()" title="Clic para reiniciar zoom a 1.0x">
+                🔍 Zoom {{ digitalZoom().toFixed(1) }}x ✕
+              </span>
+            }
+          </div>
+
+          <!-- Sleek External Status Bar (Outside of Video, 0% overlap with camera OSD) -->
+          <div class="player-status-bar">
+            <div class="status-group left">
+              <span class="status-item live"><span class="dot"></span> EN VIVO</span>
+              <span class="status-item quality">{{ selectedStream() === 'c2l_hd' ? '720p HD' : '360p SD' }}</span>
+              <span class="status-item stats">{{ liveStats().status }} | Latencia: {{ liveStats().latency }}</span>
+              <span class="status-item mode-tag">{{ streamMode().toUpperCase() }}</span>
+            </div>
+            <div class="status-group right">
+              <span
+                class="status-item daynight"
+                [title]="'Saturación: ' + nvr.dayNight().saturation.toFixed(1) + '% | Brillo: ' + nvr.dayNight().brightness.toFixed(1) + '%. El cambio físico se hace desde la app del celular.'"
+              >
+                {{ nvr.dayNight().state === 'day' ? '☀️ Día (Color)' : (nvr.dayNight().state === 'night' ? '🌙 Noche (IR)' : '❔ Desconocido') }}
+              </span>
+              <span class="status-item audio" [class.active]="!isMuted() && streamMode() !== 'snapshot'">
+                {{ streamMode() === 'snapshot' ? '🔇 Sin audio' : (isMuted() ? '🔇 Silenciado' : '🔊 Audio AAC 8kHz') }}
+              </span>
+              @if (nvr.health()?.recorder?.active) {
+                <span class="status-item rec"><span class="dot-rec"></span> REC {{ nvr.recorderStatus().mode === 'motion' ? 'Movimiento' : 'Continuo' }}</span>
+              }
               @if (nvr.motionActive()) {
-                <span class="hud-tag motion-alert pulse-red">
-                  🚨 MOVIMIENTO ({{ nvr.motionScore().toFixed(1) }}%)
-                </span>
-              }
-              @if (nvr.light().on) {
-                <span class="hud-tag light-status-tag">
-                  💡 Foco Activo
-                </span>
-              }
-              @if (digitalZoom() > 1.0) {
-                <span class="hud-tag zoom-tag" (click)="resetZoom()" title="Clic para reiniciar zoom a 1.0x">
-                  🔍 Zoom {{ digitalZoom().toFixed(1) }}x ✕
-                </span>
+                <span class="status-item motion-badge">🚨 Movimiento ({{ nvr.motionScore().toFixed(1) }}%)</span>
               }
             </div>
           </div>

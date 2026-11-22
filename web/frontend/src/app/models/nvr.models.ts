@@ -63,6 +63,16 @@ export interface LightState {
   on: boolean;
   mode: 'manual' | 'auto';
   updatedAt: string;
+  source?: string;
+  state?: 'day' | 'night' | 'unknown';
+}
+
+export interface DayNightState {
+  state: 'day' | 'night' | 'unknown';
+  source: 'inferred';
+  saturation: number;
+  brightness: number;
+  updatedAt: string;
 }
 
 export interface MotionEvent {

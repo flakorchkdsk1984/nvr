@@ -9,6 +9,7 @@ import {
   StorageStats,
   LogEntry,
   LightState,
+  DayNightState,
   MotionEvent,
   RecorderStatus,
 } from '../models/nvr.models';
@@ -29,6 +30,7 @@ export class NvrService {
   segments = signal<SegmentInfo[]>([]);
   logs = signal<LogEntry[]>([]);
   light = signal<LightState>({ on: false, mode: 'manual', updatedAt: '' });
+  dayNight = signal<DayNightState>({ state: 'unknown', source: 'inferred', saturation: 0, brightness: 0, updatedAt: '' });
   recorderStatus = signal<RecorderStatus>({ mode: 'continuous', active: false, isRecordingMotion: false, prerollBufferCount: 0 });
   events = signal<MotionEvent[]>([]);
   motionActive = signal<boolean>(false);
@@ -170,10 +172,16 @@ export class NvrService {
     );
   }
 
-  // Light Control
+  // Light & Day/Night Control
   fetchLight(): Observable<LightState> {
     return this.http.get<LightState>('/api/light').pipe(
       tap((s) => this.light.set(s))
+    );
+  }
+
+  fetchDayNight(): Observable<DayNightState> {
+    return this.http.get<DayNightState>('/api/daynight').pipe(
+      tap((s) => this.dayNight.set(s))
     );
   }
 
@@ -217,9 +225,16 @@ export class NvrService {
     eventSource.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'init' && msg.status) {
-          this.motionActive.set(msg.status.active);
-          this.motionScore.set(msg.status.score || 0);
+        if (msg.type === 'init') {
+          if (msg.status) {
+            this.motionActive.set(msg.status.active);
+            this.motionScore.set(msg.status.score || 0);
+          }
+          if (msg.daynight) {
+            this.dayNight.set(msg.daynight);
+          }
+        } else if (msg.type === 'daynight_change' && msg.data) {
+          this.dayNight.set(msg.data);
         } else if (msg.type === 'motion_start' && msg.event) {
           this.motionActive.set(true);
           this.motionScore.set(msg.event.score || 0);
@@ -258,6 +273,7 @@ export class NvrService {
     this.fetchStorage().subscribe();
     this.fetchLogs().subscribe();
     this.fetchLight().subscribe();
+    this.fetchDayNight().subscribe();
     this.fetchRecorderStatus().subscribe();
     this.fetchEvents().subscribe();
   }
