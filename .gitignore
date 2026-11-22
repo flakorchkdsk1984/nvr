@@ -4,13 +4,16 @@ bin/
 # Environment & secrets
 .env
 .env.local
+*.env
 
 # Video recordings & cache
 recordings/
 cache/
+data/
 data/run/
 data/preroll/
 data/events/
+data/daynight_probe/
 data/*.pid
 data/*.log
 data/*.tmp
@@ -20,11 +23,21 @@ data/web.log
 data/recorder.log
 data/go2rtc.log
 
-# Node dependencies & caches
+# Captures, dumps & packages
+*.pcap
+*.pcapng
+*.apk
+
+# Node dependencies & build outputs
 node_modules/
+**/node_modules/
+dist
+dist/
+**/dist
+**/dist/
 .angular/
 
-# Test artifacts
+# Test artifacts & media
 test_*
 *.mp4
 *.jpg
