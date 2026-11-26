@@ -19,7 +19,7 @@ import { getStorageStats, runRetentionCycle, initRetentionScheduler, } from './s
 import { checkSystemHealth, getLiveSnapshotBuffer, startRecorder, stopRecorder, updateCameraConfig, } from './system.js';
 import { getLightState } from './light.js';
 import { getDayNightState, startDayNightPoller, dayNightEvents, } from './daynight.js';
-import { getEvents, getEventSnapshot } from './events.js';
+import { getEvents, getEventSnapshot, getEventRecording, getTimelineEvents, } from './events.js';
 import { getMotionEngine, startMotionEngine } from './motion.js';
 import { getRecorderManager, initRecorderManager } from './recorder-manager.js';
 export const fastify = Fastify({
@@ -269,6 +269,25 @@ fastify.register(async (protectedRoutes) => {
         reply.header('Content-Type', snap.contentType);
         reply.header('Cache-Control', 'public, max-age=86400');
         return reply.send(snap.buffer);
+    });
+    protectedRoutes.get('/api/events/:id/recording', async (req, reply) => {
+        const { id } = req.params;
+        const idNum = parseInt(id, 10);
+        if (isNaN(idNum)) {
+            return reply.status(400).send({ error: 'ID de evento inválido' });
+        }
+        const rec = getEventRecording(idNum);
+        return { eventId: idNum, ...rec };
+    });
+    protectedRoutes.get('/api/timeline', async (req) => {
+        const query = req.query;
+        return getTimelineEvents({
+            page: query.page ? parseInt(query.page, 10) : 1,
+            limit: query.limit ? parseInt(query.limit, 10) : 20,
+            sort: query.sort === 'desc' ? 'desc' : 'asc',
+            date: query.date,
+            search: query.search,
+        });
     });
     // SSE Live Stream for Motion Events
     protectedRoutes.get('/api/events/live', async (req, reply) => {

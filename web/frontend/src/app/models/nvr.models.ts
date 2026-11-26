@@ -86,6 +86,36 @@ export interface MotionEvent {
   created_at: string;
 }
 
+export interface EventRecordingMatch {
+  hasRecording: boolean;
+  camera: string;
+  date?: string;
+  fileName?: string;
+  videoUrl?: string;
+  thumbUrl?: string;
+  offsetSeconds?: number;
+  durationSeconds?: number;
+  message?: string;
+}
+
+export interface TimelineItem extends MotionEvent {
+  camera: string;
+  recording: EventRecordingMatch;
+}
+
+export interface TimelinePagination {
+  page: number;
+  limit: number;
+  totalItems: number;
+  totalPages: number;
+  sort: 'asc' | 'desc';
+}
+
+export interface TimelineResponse {
+  items: TimelineItem[];
+  pagination: TimelinePagination;
+}
+
 export interface RecorderStatus {
   mode: 'continuous' | 'motion' | 'paused';
   active: boolean;

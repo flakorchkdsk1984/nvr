@@ -558,11 +558,38 @@
                   #videoPlayer
                   controls
                   autoplay
-                  preload="metadata"
+                  [muted]="playerMuted()"
+                  playsinline
+                  preload="auto"
                   class="recording-video"
+                  (loadedmetadata)="onPlayerLoadedMetadata()"
+                  (canplay)="onPlayerCanPlay()"
+                  (playing)="onPlayerPlaying()"
+                  (pause)="onPlayerPause()"
+                  (waiting)="onPlayerWaiting()"
+                  (error)="onPlayerError($event)"
                   (ended)="playNextSegment()"
                   [src]="'/api/recordings/' + currentSeg.date + '/' + currentSeg.fileName"
                 ></video>
+
+                <!-- Playback States Overlay -->
+                @if (playerState() === 'loading') {
+                  <div class="player-state-overlay loading">
+                    <span class="spinner"></span>
+                    <p>Cargando video y metadatos...</p>
+                  </div>
+                } @else if (playerState() === 'waiting') {
+                  <div class="player-state-overlay buffering">
+                    <span class="spinner"></span>
+                    <p>Buffering de video...</p>
+                  </div>
+                } @else if (playerState() === 'error') {
+                  <div class="player-state-overlay error">
+                    <span class="error-icon">⚠️</span>
+                    <p>{{ playerErrorMsg() || 'Error al reproducir el archivo de grabación.' }}</p>
+                    <button class="btn-retry-player" (click)="retryPlayer()">🔄 Reintentar Reproducción</button>
+                  </div>
+                }
               </div>
 
               <!-- Playback Controls -->
@@ -581,6 +608,9 @@
                   }
                 </div>
                 <div class="playback-actions">
+                  <button class="btn-player-mute" (click)="togglePlayerMute()" [title]="playerMuted() ? 'Activar sonido' : 'Silenciar sonido'">
+                    {{ playerMuted() ? '🔇 Silenciado' : '🔊 Sonido' }}
+                  </button>
                   <button class="btn-clip" (click)="openExportClipModal(currentSeg)">✂️ Exportar Clip</button>
                   <a
                     class="btn-download"
@@ -644,56 +674,504 @@
       </div>
     }
 
-    <!-- 3. EVENTS VIEW -->
+    <!-- 3. EVENTS & TIMELINE VIEW -->
     @if (activeTab() === 'events') {
       <div class="events-layout">
+        <!-- Events & Timeline Header Controls -->
         <div class="events-header">
           <div class="title-col">
-            <h3>⚡ Registro de Eventos de Detección</h3>
-            <span class="subtext">Detección de movimiento en tiempo real con capturas e índice SQLite</span>
+            <h3>⚡ Registro y Timeline Histórico de Eventos</h3>
+            <span class="subtext">Consulta cronológica de eventos de movimiento vinculados a grabaciones con mini-reproductor</span>
           </div>
-          <div class="events-actions">
-            <button class="btn-refresh-events" (click)="nvr.fetchEvents().subscribe()">🔄 Actualizar Eventos</button>
+
+          <div class="events-controls-row">
+            <!-- View Mode Switcher -->
+            <div class="view-mode-toggle">
+              <button
+                class="pill-btn"
+                [class.active]="timelineViewMode() === 'timeline'"
+                (click)="timelineViewMode.set('timeline')"
+                title="Vista de listado cronológico (Timeline)"
+              >
+                📋 Timeline
+              </button>
+              <button
+                class="pill-btn"
+                [class.active]="timelineViewMode() === 'cards'"
+                (click)="timelineViewMode.set('cards')"
+                title="Vista en tarjetas con captura"
+              >
+                🗂️ Tarjetas
+              </button>
+            </div>
+
+            <!-- Sort Direction Toggle -->
+            <button
+              class="btn-sort-toggle"
+              (click)="setTimelineSort(timelineSort() === 'asc' ? 'desc' : 'asc')"
+              [title]="timelineSort() === 'asc' ? 'Orden actual: Más antiguo primero (clic para más reciente primero)' : 'Orden actual: Más reciente primero (clic para más antiguo primero)'"
+            >
+              @if (timelineSort() === 'asc') {
+                <span>⬆️ Más antiguo primero</span>
+              } @else {
+                <span>⬇️ Más reciente primero</span>
+              }
+            </button>
+
+            <!-- Date Filter -->
+            <div class="filter-item">
+              <input
+                type="date"
+                class="input-filter-date"
+                [ngModel]="timelineDateFilter()"
+                (ngModelChange)="timelineDateFilter.set($event); onTimelineFilterChange()"
+                title="Filtrar por fecha específica"
+              />
+            </div>
+
+            <!-- Search Filter -->
+            <div class="filter-item">
+              <input
+                type="text"
+                class="input-filter-search"
+                placeholder="Buscar ID o tipo..."
+                [ngModel]="timelineSearchFilter()"
+                (ngModelChange)="timelineSearchFilter.set($event); onTimelineFilterChange()"
+                title="Buscar eventos por ID o fuente"
+              />
+            </div>
+
+            @if (timelineDateFilter() || timelineSearchFilter()) {
+              <button class="btn-clear-filter" (click)="clearTimelineFilters()" title="Limpiar filtros">
+                ✕ Limpiar
+              </button>
+            }
+
+            <button class="btn-refresh-events" (click)="loadTimeline()" title="Actualizar lista">
+              🔄 Actualizar
+            </button>
           </div>
         </div>
 
-        @if (nvr.events().length === 0) {
+        @if (nvr.timelineLoading()) {
+          <div class="timeline-loading-box">
+            <span class="spinner"></span>
+            <p>Cargando eventos y verificando grabaciones asociadas...</p>
+          </div>
+        } @else if (nvr.timelineItems().length === 0) {
           <div class="no-events-box">
             <span class="no-events-icon">👁️</span>
-            <h4>No hay eventos de movimiento registrados</h4>
-            <p>Cuando ocurra movimiento en el campo visual de la cámara, los eventos se registrarán con su captura y duración automáticamente.</p>
+            <h4>No se encontraron eventos</h4>
+            <p>
+              @if (timelineDateFilter() || timelineSearchFilter()) {
+                No hay eventos que coincidan con los filtros aplicados. Intenta limpiar los filtros.
+              } @else {
+                Cuando ocurra movimiento en el campo visual de la cámara, los eventos se registrarán con su captura y clip de video automáticamente.
+              }
+            </p>
           </div>
         } @else {
-          <div class="events-grid">
-            @for (ev of nvr.events(); track ev.id) {
-              <div class="event-card" [class.in-progress]="!ev.end_time">
-                <div class="event-thumb-box" (click)="openSnapshotModal('/api/events/' + ev.id + '/snapshot', 'Captura Evento #' + ev.id + ' (' + ev.start_time + ')')">
-                  @if (ev.snapshot_path) {
-                    <img [src]="'/api/events/' + ev.id + '/snapshot'" alt="Captura" class="event-thumb-img" loading="lazy" />
-                    <span class="view-badge">🔍 Ver</span>
-                  } @else {
-                    <div class="event-thumb-placeholder">📷 Sin Captura</div>
-                  }
-                  @if (!ev.end_time) {
-                    <span class="live-event-badge pulse-red">EN CURSO</span>
-                  }
-                </div>
+          <!-- VIEW MODE 1: TIMELINE LIST TABLE -->
+          @if (timelineViewMode() === 'timeline') {
+            <div class="timeline-table-card">
+              <div class="table-responsive">
+                <table class="timeline-table">
+                  <thead>
+                    <tr>
+                      <th class="th-preview">Miniatura</th>
+                      <th class="th-id">ID</th>
+                      <th class="th-time">Fecha y Hora</th>
+                      <th class="th-camera">Cámara</th>
+                      <th class="th-duration">Duración</th>
+                      <th class="th-score">Intensidad</th>
+                      <th class="th-status">Grabación</th>
+                      <th class="th-actions">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (item of nvr.timelineItems(); track item.id) {
+                      <tr
+                        class="timeline-row"
+                        [class.selected-row]="selectedEvent()?.id === item.id"
+                        [class.in-progress-row]="!item.end_time"
+                        (click)="toggleEventSelection(item)"
+                      >
+                        <!-- Preview Thumbnail -->
+                        <td class="td-preview" (click)="$event.stopPropagation(); openSnapshotModal('/api/events/' + item.id + '/snapshot', 'Captura Evento #' + item.id + ' (' + item.start_time + ')')">
+                          <div class="table-thumb-wrap">
+                            @if (item.recording.hasRecording && item.recording.thumbUrl) {
+                              <img [src]="item.recording.thumbUrl" alt="Miniatura video" class="row-thumb" loading="lazy" />
+                            } @else if (item.snapshot_path) {
+                              <img [src]="'/api/events/' + item.id + '/snapshot'" alt="Captura evento" class="row-thumb" loading="lazy" />
+                            } @else {
+                              <div class="row-thumb-placeholder">📷</div>
+                            }
+                            <span class="thumb-zoom-icon">🔍</span>
+                          </div>
+                        </td>
 
-                <div class="event-body">
-                  <div class="event-top-line">
-                    <span class="event-id-tag">#{{ ev.id }}</span>
-                    <span class="event-score-tag">Intensidad: {{ ev.score.toFixed(1) }}%</span>
+                        <!-- ID -->
+                        <td class="td-id">
+                          <span class="event-id-badge">#{{ item.id }}</span>
+                        </td>
+
+                        <!-- Timestamp -->
+                        <td class="td-time">
+                          <span class="time-main">🕒 {{ item.start_time | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+                          @if (!item.end_time) {
+                            <span class="badge-live-pulse">EN CURSO</span>
+                          }
+                        </td>
+
+                        <!-- Camera -->
+                        <td class="td-camera">
+                          <span class="camera-tag">📹 {{ item.camera }}</span>
+                        </td>
+
+                        <!-- Duration -->
+                        <td class="td-duration">
+                          ⏱ {{ item.end_time ? (item.duration_s + 's') : 'Detectando...' }}
+                        </td>
+
+                        <!-- Motion Score -->
+                        <td class="td-score">
+                          <div class="score-pill" [style.background-color]="item.score > 20 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(59, 130, 246, 0.2)'">
+                            {{ item.score.toFixed(1) }}%
+                          </div>
+                        </td>
+
+                        <!-- Recording State Badge -->
+                        <td class="td-status">
+                          @if (item.recording.hasRecording) {
+                            <span class="rec-badge available" title="Grabación MP4 disponible para reproducción">
+                              📼 Video OK
+                            </span>
+                          } @else {
+                            <span class="rec-badge not-available" title="No se encontró grabación archivada para este evento">
+                              ℹ️ Sin grabación
+                            </span>
+                          }
+                        </td>
+
+                        <!-- Actions -->
+                        <td class="td-actions" (click)="$event.stopPropagation()">
+                          <button
+                            class="btn-row-action play"
+                            (click)="toggleEventSelection(item)"
+                            [title]="selectedEvent()?.id === item.id ? 'Ocultar reproductor' : 'Reproducir video del evento'"
+                          >
+                            {{ selectedEvent()?.id === item.id ? '⏹ Cerrar' : '▶ Video' }}
+                          </button>
+
+                          @if (item.recording.hasRecording) {
+                            <button
+                              class="btn-row-action expand"
+                              (click)="openEventInMainPlayer(item)"
+                              title="Abrir este video en el reproductor principal de grabaciones"
+                            >
+                              ⛶ Ampliar
+                            </button>
+                          }
+
+                          <button
+                            class="btn-row-action snap"
+                            (click)="openSnapshotModal('/api/events/' + item.id + '/snapshot', 'Captura Evento #' + item.id)"
+                            title="Ver captura fotográfica"
+                          >
+                            📷
+                          </button>
+                        </td>
+                      </tr>
+
+                      <!-- INLINE MINI-PLAYER EXPANSION ROW -->
+                      @if (selectedEvent()?.id === item.id) {
+                        <tr class="mini-player-expansion-row">
+                          <td colspan="8">
+                            <div class="mini-player-container">
+                              <div class="mini-player-header">
+                                <div class="header-left">
+                                  <h5>🎬 Reproductor de Evento #{{ item.id }} — {{ item.camera }}</h5>
+                                  <span class="header-sub">
+                                    Inicio: {{ item.start_time | date:'yyyy-MM-dd HH:mm:ss' }} |
+                                    Duración: {{ item.duration_s }}s |
+                                    Intensidad: {{ item.score.toFixed(1) }}%
+                                  </span>
+                                </div>
+                                <button class="btn-close-mini" (click)="selectedEvent.set(null)">✕ Cerrar Mini-Reproductor</button>
+                              </div>
+
+                              <div class="mini-player-content">
+                                @if (item.recording.hasRecording) {
+                                  <!-- Video Player -->
+                                  <div class="mini-video-box">
+                                    <video
+                                      [id]="'miniVideo-' + item.id"
+                                      controls
+                                      autoplay
+                                      [muted]="miniPlayerMuted()"
+                                      playsinline
+                                      preload="auto"
+                                      class="mini-video-element"
+                                      (loadedmetadata)="onMiniPlayerLoadedMetadata(item, $event)"
+                                      (canplay)="onMiniPlayerCanPlay()"
+                                      (playing)="onMiniPlayerPlaying()"
+                                      (pause)="onMiniPlayerPause()"
+                                      (waiting)="onMiniPlayerWaiting()"
+                                      (error)="onMiniPlayerError(item)"
+                                      [src]="item.recording.videoUrl"
+                                    ></video>
+
+                                    <!-- Mini Player State Overlays -->
+                                    @if (miniPlayerState() === 'loading') {
+                                      <div class="mini-overlay loading">
+                                        <span class="spinner"></span>
+                                        <p>Cargando grabación del evento...</p>
+                                      </div>
+                                    } @else if (miniPlayerState() === 'waiting') {
+                                      <div class="mini-overlay buffering">
+                                        <span class="spinner"></span>
+                                        <p>Buffering...</p>
+                                      </div>
+                                    } @else if (miniPlayerState() === 'error') {
+                                      <div class="mini-overlay error">
+                                        <span>⚠️</span>
+                                        <p>{{ miniPlayerErrorMsg() || 'Error al decodificar la grabación.' }}</p>
+                                      </div>
+                                    }
+                                  </div>
+
+                                  <!-- Mini Player Actions Bar -->
+                                  <div class="mini-player-actions">
+                                    <div class="actions-left">
+                                      <button
+                                        class="btn-mini-control"
+                                        (click)="toggleMiniPlayerMute(item)"
+                                        [title]="miniPlayerMuted() ? 'Activar sonido' : 'Silenciar sonido'"
+                                      >
+                                        {{ miniPlayerMuted() ? '🔇 Activar Sonido' : '🔊 Silenciar' }}
+                                      </button>
+                                      <button
+                                        class="btn-mini-control primary"
+                                        (click)="openEventInMainPlayer(item)"
+                                        title="Abrir en el reproductor principal de la pestaña Grabaciones"
+                                      >
+                                        ⛶ Abrir en Reproductor Principal
+                                      </button>
+                                      <a
+                                        class="btn-mini-control"
+                                        [href]="item.recording.videoUrl"
+                                        [download]="item.recording.fileName"
+                                        title="Descargar archivo MP4 de la grabación"
+                                      >
+                                        ⬇️ Descargar MP4
+                                      </a>
+                                    </div>
+
+                                    <div class="actions-right">
+                                      <span class="file-tag">Archivo: {{ item.recording.fileName }}</span>
+                                    </div>
+                                  </div>
+                                } @else {
+                                  <!-- Informative Banner when no recording exists -->
+                                  <div class="no-recording-banner">
+                                    <div class="no-rec-icon">ℹ️</div>
+                                    <div class="no-rec-body">
+                                      <h4>Grabación no disponible para este evento</h4>
+                                      <p>
+                                        No se encontró un archivo de video archivado (continuo o por movimiento) para el intervalo
+                                        <strong>{{ item.start_time | date:'yyyy-MM-dd HH:mm:ss' }}</strong>.
+                                        Es posible que el modo de grabación haya estado pausado o el segmento haya sido purgado por la retención.
+                                      </p>
+                                      <div class="no-rec-actions">
+                                        <button
+                                          class="btn-view-snap"
+                                          (click)="openSnapshotModal('/api/events/' + item.id + '/snapshot', 'Captura Fotográfica #' + item.id)"
+                                        >
+                                          📷 Ver Captura Fotográfica Completa
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                }
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      }
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          }
+
+          <!-- VIEW MODE 2: CARDS GRID VIEW -->
+          @if (timelineViewMode() === 'cards') {
+            <div class="events-grid">
+              @for (item of nvr.timelineItems(); track item.id) {
+                <div
+                  class="event-card"
+                  [class.in-progress]="!item.end_time"
+                  [class.selected-card]="selectedEvent()?.id === item.id"
+                >
+                  <div
+                    class="event-thumb-box"
+                    (click)="openSnapshotModal('/api/events/' + item.id + '/snapshot', 'Captura Evento #' + item.id + ' (' + item.start_time + ')')"
+                  >
+                    @if (item.recording.hasRecording && item.recording.thumbUrl) {
+                      <img [src]="item.recording.thumbUrl" alt="Miniatura" class="event-thumb-img" loading="lazy" />
+                    } @else if (item.snapshot_path) {
+                      <img [src]="'/api/events/' + item.id + '/snapshot'" alt="Captura" class="event-thumb-img" loading="lazy" />
+                    } @else {
+                      <div class="event-thumb-placeholder">📷 Sin Captura</div>
+                    }
+
+                    <span class="view-badge">🔍 Foto</span>
+                    @if (!item.end_time) {
+                      <span class="live-event-badge pulse-red">EN CURSO</span>
+                    }
+                    @if (item.recording.hasRecording) {
+                      <span class="rec-available-dot" title="Video disponible">📼</span>
+                    }
                   </div>
-                  <div class="event-time-line">
-                    🕒 {{ ev.start_time | date:'yyyy-MM-dd HH:mm:ss' }}
-                  </div>
-                  <div class="event-meta-line">
-                    <span>⏱ Duración: <strong>{{ ev.end_time ? (ev.duration_s + 's') : 'Detectando...' }}</strong></span>
-                    <span class="source-tag">{{ ev.source }}</span>
+
+                  <div class="event-body">
+                    <div class="event-top-line">
+                      <span class="event-id-tag">#{{ item.id }}</span>
+                      <span class="event-score-tag">Intensidad: {{ item.score.toFixed(1) }}%</span>
+                    </div>
+
+                    <div class="event-time-line">
+                      🕒 {{ item.start_time | date:'yyyy-MM-dd HH:mm:ss' }}
+                    </div>
+
+                    <div class="event-meta-line">
+                      <span>⏱ Duración: <strong>{{ item.end_time ? (item.duration_s + 's') : 'Detectando...' }}</strong></span>
+                      <span class="camera-card-tag">{{ item.camera }}</span>
+                    </div>
+
+                    <div class="event-card-actions">
+                      <button
+                        class="btn-card-action"
+                        [class.active-play]="selectedEvent()?.id === item.id"
+                        (click)="toggleEventSelection(item)"
+                      >
+                        {{ selectedEvent()?.id === item.id ? '⏹ Cerrar' : (item.recording.hasRecording ? '▶ Ver Video' : 'ℹ️ Info Video') }}
+                      </button>
+
+                      @if (item.recording.hasRecording) {
+                        <button
+                          class="btn-card-action expand"
+                          (click)="openEventInMainPlayer(item)"
+                          title="Abrir en reproductor principal"
+                        >
+                          ⛶
+                        </button>
+                      }
+                    </div>
+
+                    <!-- Card Inline Mini-Player -->
+                    @if (selectedEvent()?.id === item.id) {
+                      <div class="card-inline-player">
+                        @if (item.recording.hasRecording) {
+                          <video
+                            [id]="'miniVideo-' + item.id"
+                            controls
+                            autoplay
+                            [muted]="miniPlayerMuted()"
+                            playsinline
+                            preload="auto"
+                            class="card-video-element"
+                            (loadedmetadata)="onMiniPlayerLoadedMetadata(item, $event)"
+                            (canplay)="onMiniPlayerCanPlay()"
+                            (playing)="onMiniPlayerPlaying()"
+                            (pause)="onMiniPlayerPause()"
+                            (waiting)="onMiniPlayerWaiting()"
+                            (error)="onMiniPlayerError(item)"
+                            [src]="item.recording.videoUrl"
+                          ></video>
+                          <div class="card-mini-actions">
+                            <button class="btn-sm-action" (click)="toggleMiniPlayerMute(item)">
+                              {{ miniPlayerMuted() ? '🔇 Activar Audio' : '🔊 Silenciar' }}
+                            </button>
+                            <button class="btn-sm-action primary" (click)="openEventInMainPlayer(item)">
+                              ⛶ Ampliar
+                            </button>
+                          </div>
+                        } @else {
+                          <div class="card-no-rec-box">
+                            <p>ℹ️ Sin grabación asociada para este evento.</p>
+                          </div>
+                        }
+                      </div>
+                    }
                   </div>
                 </div>
-              </div>
-            }
+              }
+            </div>
+          }
+
+          <!-- PAGINATION CONTROLS -->
+          <div class="pagination-bar">
+            <div class="pagination-info">
+              Mostrando eventos
+              <strong>{{ (timelinePage() - 1) * timelineLimit() + 1 }}</strong> -
+              <strong>{{ Math.min(timelinePage() * timelineLimit(), nvr.timelinePagination().totalItems) }}</strong>
+              de <strong>{{ nvr.timelinePagination().totalItems }}</strong> registros
+              (Página {{ timelinePage() }} de {{ nvr.timelinePagination().totalPages }})
+            </div>
+
+            <div class="pagination-controls">
+              <button
+                class="btn-page"
+                [disabled]="timelinePage() <= 1"
+                (click)="setTimelinePage(1)"
+                title="Primera página"
+              >
+                ⏮ Primera
+              </button>
+              <button
+                class="btn-page"
+                [disabled]="timelinePage() <= 1"
+                (click)="setTimelinePage(timelinePage() - 1)"
+                title="Página anterior"
+              >
+                ◀ Anterior
+              </button>
+
+              <span class="page-current">Página {{ timelinePage() }}</span>
+
+              <button
+                class="btn-page"
+                [disabled]="timelinePage() >= nvr.timelinePagination().totalPages"
+                (click)="setTimelinePage(timelinePage() + 1)"
+                title="Página siguiente"
+              >
+                Siguiente ▶
+              </button>
+              <button
+                class="btn-page"
+                [disabled]="timelinePage() >= nvr.timelinePagination().totalPages"
+                (click)="setTimelinePage(nvr.timelinePagination().totalPages)"
+                title="Última página"
+              >
+                Última ⏭
+              </button>
+            </div>
+
+            <div class="pagination-limit">
+              <label for="pageLimit">Por página:</label>
+              <select
+                id="pageLimit"
+                [ngModel]="timelineLimit()"
+                (ngModelChange)="setTimelineLimit($event)"
+                class="select-limit"
+              >
+                <option [ngValue]="10">10</option>
+                <option [ngValue]="20">20</option>
+                <option [ngValue]="50">50</option>
+              </select>
+            </div>
           </div>
         }
       </div>

@@ -31,10 +31,10 @@ services:
       # ========================================================================
       # 1. DIRECCIÓN IP DE LA CÁMARA (¡Cámbiala aquí si tu cámara cambia de IP!)
       # ========================================================================
-      - CAMERA_HOST=192.168.1.40
-      - CAMERA_PORT=80
-      - CAMERA_USER=admin
-      - CAMERA_PASS=
+      - CAMERA_HOST=${CAMERA_HOST:-192.168.1.41}
+      - CAMERA_PORT=${CAMERA_PORT:-80}
+      - CAMERA_USER=${CAMERA_USER:-admin}
+      - CAMERA_PASS=${CAMERA_PASS:-}
 
       # ========================================================================
       # 2. POLÍTICAS DE GRABACIÓN Y RETENCIÓN

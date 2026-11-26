@@ -11,7 +11,7 @@ RUN apk add --no-cache git
 WORKDIR /src
 RUN git clone --depth 1 --branch v1.9.15 https://github.com/AlexxIT/go2rtc.git .
 COPY patches/eseecloud_aac.patch /tmp/
-RUN git apply /tmp/eseecloud_aac.patch
+RUN sed -i 's/\r$//' /tmp/eseecloud_aac.patch && git apply /tmp/eseecloud_aac.patch
 RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /go2rtc
 
 # ------------------------------------------------------------------------------

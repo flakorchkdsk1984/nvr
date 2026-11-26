@@ -1,25 +1,28 @@
 {
   "1": {
     "number": 1,
-    "name": "sillon",
-    "updatedAt": "2026-11-21T01:18:53.813Z"
+    "name": "Entrada Casa",
+    "updatedAt": "2026-11-22T22:15:55.173Z"
   },
   "2": {
     "number": 2,
-    "name": "casita",
-    "updatedAt": "2026-11-21T02:14:51.970Z"
+    "name": "feria",
+    "updatedAt": "2026-11-22T22:29:41.689Z"
   },
   "3": {
     "number": 3,
-    "name": "Preset 3"
+    "name": "Patio",
+    "updatedAt": "2026-11-22T22:30:37.302Z"
   },
   "4": {
     "number": 4,
-    "name": "Preset 4"
+    "name": "Medidor",
+    "updatedAt": "2026-11-22T22:31:24.105Z"
   },
   "5": {
     "number": 5,
-    "name": "Preset 5"
+    "name": "auto azul",
+    "updatedAt": "2026-11-23T13:23:09.055Z"
   },
   "6": {
     "number": 6,
