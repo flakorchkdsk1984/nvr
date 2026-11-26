@@ -4,6 +4,7 @@
 # Force LF line endings for all shell scripts and container files
 # Prevents "/usr/bin/env: 'bash\r': No such file or directory" when cloned on Windows
 *.sh text eol=lf
+*.patch text eol=lf
 Dockerfile text eol=lf
 docker-compose.yml text eol=lf
 go2rtc.yaml text eol=lf
