@@ -12,6 +12,10 @@ import {
   DayNightState,
   MotionEvent,
   RecorderStatus,
+  TimelineItem,
+  TimelinePagination,
+  TimelineResponse,
+  EventRecordingMatch,
 } from '../models/nvr.models';
 
 @Injectable({
@@ -33,6 +37,9 @@ export class NvrService {
   dayNight = signal<DayNightState>({ state: 'unknown', source: 'inferred', saturation: 0, brightness: 0, updatedAt: '' });
   recorderStatus = signal<RecorderStatus>({ mode: 'continuous', active: false, isRecordingMotion: false, prerollBufferCount: 0 });
   events = signal<MotionEvent[]>([]);
+  timelineItems = signal<TimelineItem[]>([]);
+  timelinePagination = signal<TimelinePagination>({ page: 1, limit: 20, totalItems: 0, totalPages: 1, sort: 'asc' });
+  timelineLoading = signal<boolean>(false);
   motionActive = signal<boolean>(false);
   motionScore = signal<number>(0);
 
@@ -217,6 +224,37 @@ export class NvrService {
     return this.http.get<MotionEvent[]>(url).pipe(
       tap((list) => this.events.set(list))
     );
+  }
+
+  // Timeline with Pagination & Recording Resolution
+  fetchTimeline(
+    page: number = 1,
+    limit: number = 20,
+    sort: 'asc' | 'desc' = 'asc',
+    date?: string,
+    search?: string
+  ): Observable<TimelineResponse> {
+    this.timelineLoading.set(true);
+    const params: string[] = [`page=${page}`, `limit=${limit}`, `sort=${sort}`];
+    if (date) params.push(`date=${encodeURIComponent(date)}`);
+    if (search) params.push(`search=${encodeURIComponent(search)}`);
+    const url = `/api/timeline?${params.join('&')}`;
+
+    return this.http.get<TimelineResponse>(url).pipe(
+      tap((res) => {
+        this.timelineItems.set(res.items);
+        this.timelinePagination.set(res.pagination);
+        this.timelineLoading.set(false);
+      }),
+      catchError((err) => {
+        this.timelineLoading.set(false);
+        throw err;
+      })
+    );
+  }
+
+  fetchEventRecording(id: number): Observable<EventRecordingMatch & { eventId: number }> {
+    return this.http.get<EventRecordingMatch & { eventId: number }>(`/api/events/${id}/recording`);
   }
 
   initMotionLiveStream(): () => void {

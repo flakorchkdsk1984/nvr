@@ -13,7 +13,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import Hls from 'hls.js';
 import { NvrService } from './services/nvr.service';
-import { SegmentInfo, PresetInfo, MotionEvent } from './models/nvr.models';
+import {
+  SegmentInfo,
+  PresetInfo,
+  MotionEvent,
+  TimelineItem,
+  TimelinePagination,
+  EventRecordingMatch,
+} from './models/nvr.models';
 
 @Component({
   selector: 'app-root',
@@ -24,6 +31,7 @@ import { SegmentInfo, PresetInfo, MotionEvent } from './models/nvr.models';
 })
 export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   public nvr = inject(NvrService);
+  public readonly Math = Math;
 
   // Tab navigation
   activeTab = signal<'live' | 'recordings' | 'events' | 'system'>('live');
@@ -104,7 +112,24 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   // Recordings & Player state
   activeSegment = signal<SegmentInfo | null>(null);
   playbackSpeed = 1.0;
+  playerState = signal<'idle' | 'loading' | 'playing' | 'paused' | 'waiting' | 'error'>('idle');
+  playerErrorMsg = signal<string>('');
+  playerMuted = signal<boolean>(true);
+  private pendingMainSeek: number | null = null;
   @ViewChild('videoPlayer') videoPlayerRef!: ElementRef<HTMLVideoElement>;
+
+  // Timeline & Event Mini-Player State
+  timelineViewMode = signal<'timeline' | 'cards'>('timeline');
+  timelineSort = signal<'asc' | 'desc'>('asc'); // Ascending default per requirements
+  timelineDateFilter = signal<string>('');
+  timelineSearchFilter = signal<string>('');
+  timelinePage = signal<number>(1);
+  timelineLimit = signal<number>(20);
+
+  selectedEvent = signal<TimelineItem | null>(null);
+  miniPlayerState = signal<'idle' | 'loading' | 'playing' | 'paused' | 'waiting' | 'error' | 'no_recording'>('idle');
+  miniPlayerMuted = signal<boolean>(true);
+  miniPlayerErrorMsg = signal<string>('');
 
   // Clip Export Modal state
   exportingSegment = signal<SegmentInfo | null>(null);
@@ -219,6 +244,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       setTimeout(() => this.initLivePlayer(), 150);
     } else if (tab === 'events') {
       this.nvr.fetchEvents().subscribe();
+      this.loadTimeline();
     }
   }
 
@@ -818,14 +844,90 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     });
   }
 
-  playSegment(seg: SegmentInfo) {
+  playSegment(seg: SegmentInfo, seekOffset?: number) {
+    this.pendingMainSeek = seekOffset && seekOffset > 0 ? seekOffset : null;
     this.activeSegment.set(seg);
-    if (this.videoPlayerRef) {
-      const video = this.videoPlayerRef.nativeElement;
-      video.src = `/api/recordings/${seg.date}/${seg.fileName}`;
+    this.playerState.set('loading');
+    this.playerErrorMsg.set('');
+
+    setTimeout(() => {
+      const video = this.videoPlayerRef?.nativeElement;
+      if (video) {
+        video.playbackRate = this.playbackSpeed;
+        video.muted = this.playerMuted();
+        const promise = video.play();
+        if (promise !== undefined) {
+          promise
+            .then(() => {
+              this.playerState.set('playing');
+            })
+            .catch((err) => {
+              console.warn('Autoplay prevented or waiting for interaction:', err);
+              this.playerState.set('paused');
+            });
+        }
+      }
+    }, 60);
+  }
+
+  onPlayerLoadedMetadata() {
+    const video = this.videoPlayerRef?.nativeElement;
+    if (video && this.pendingMainSeek && this.pendingMainSeek > 0) {
+      const dur = video.duration;
+      const target = isFinite(dur) && dur > 1
+        ? Math.min(this.pendingMainSeek, Math.max(0, dur - 0.5))
+        : this.pendingMainSeek;
+      video.currentTime = target;
+      this.pendingMainSeek = null;
+    }
+  }
+
+  onPlayerCanPlay() {
+    if (this.playerState() === 'loading' || this.playerState() === 'waiting') {
+      this.playerState.set('playing');
+    }
+  }
+
+  onPlayerPlaying() {
+    this.playerState.set('playing');
+  }
+
+  onPlayerPause() {
+    if (this.playerState() !== 'error') {
+      this.playerState.set('paused');
+    }
+  }
+
+  onPlayerWaiting() {
+    this.playerState.set('waiting');
+  }
+
+  onPlayerError(event: any) {
+    console.error('Player error event:', event);
+    this.playerState.set('error');
+    this.playerErrorMsg.set('No se pudo reproducir el archivo de grabación.');
+  }
+
+  retryPlayer() {
+    const cur = this.activeSegment();
+    const video = this.videoPlayerRef?.nativeElement;
+    if (cur && video) {
+      this.playerState.set('loading');
+      this.playerErrorMsg.set('');
+      video.src = `/api/recordings/${cur.date}/${cur.fileName}`;
       video.load();
-      video.playbackRate = this.playbackSpeed;
-      video.play().catch(() => {});
+      video.muted = this.playerMuted();
+      video.play().catch(() => this.playerState.set('paused'));
+    } else if (cur) {
+      this.playSegment(cur);
+    }
+  }
+
+  togglePlayerMute() {
+    const next = !this.playerMuted();
+    this.playerMuted.set(next);
+    if (this.videoPlayerRef?.nativeElement) {
+      this.videoPlayerRef.nativeElement.muted = next;
     }
   }
 
@@ -834,6 +936,148 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.videoPlayerRef) {
       this.videoPlayerRef.nativeElement.playbackRate = speed;
     }
+  }
+
+  // ==========================================
+  // TIMELINE & MINI PLAYER METHODS
+  // ==========================================
+  loadTimeline(page?: number) {
+    if (page) this.timelinePage.set(page);
+    this.nvr
+      .fetchTimeline(
+        this.timelinePage(),
+        this.timelineLimit(),
+        this.timelineSort(),
+        this.timelineDateFilter() || undefined,
+        this.timelineSearchFilter() || undefined
+      )
+      .subscribe();
+  }
+
+  setTimelineSort(sort: 'asc' | 'desc') {
+    this.timelineSort.set(sort);
+    this.timelinePage.set(1);
+    this.loadTimeline();
+  }
+
+  setTimelinePage(page: number) {
+    const max = this.nvr.timelinePagination().totalPages;
+    if (page < 1 || (max > 0 && page > max)) return;
+    this.timelinePage.set(page);
+    this.loadTimeline();
+  }
+
+  setTimelineLimit(limit: number) {
+    this.timelineLimit.set(limit);
+    this.timelinePage.set(1);
+    this.loadTimeline();
+  }
+
+  onTimelineFilterChange() {
+    this.timelinePage.set(1);
+    this.loadTimeline();
+  }
+
+  clearTimelineFilters() {
+    this.timelineDateFilter.set('');
+    this.timelineSearchFilter.set('');
+    this.timelinePage.set(1);
+    this.loadTimeline();
+  }
+
+  toggleEventSelection(item: TimelineItem) {
+    if (this.selectedEvent()?.id === item.id) {
+      this.selectedEvent.set(null);
+      this.miniPlayerState.set('idle');
+      return;
+    }
+
+    this.selectedEvent.set(item);
+    if (!item.recording || !item.recording.hasRecording) {
+      this.miniPlayerState.set('no_recording');
+      return;
+    }
+
+    this.miniPlayerState.set('loading');
+    this.miniPlayerErrorMsg.set('');
+
+    setTimeout(() => {
+      const v = document.getElementById(`miniVideo-${item.id}`) as HTMLVideoElement | null;
+      if (v) {
+        v.muted = this.miniPlayerMuted();
+        const promise = v.play();
+        if (promise !== undefined) {
+          promise
+            .then(() => this.miniPlayerState.set('playing'))
+            .catch(() => this.miniPlayerState.set('paused'));
+        }
+      }
+    }, 80);
+  }
+
+  onMiniPlayerLoadedMetadata(item: TimelineItem, event: Event) {
+    const v = event.target as HTMLVideoElement | null;
+    if (v && item.recording?.offsetSeconds && item.recording.offsetSeconds > 0) {
+      const dur = v.duration;
+      const target = isFinite(dur) && dur > 1
+        ? Math.min(item.recording.offsetSeconds, Math.max(0, dur - 0.5))
+        : item.recording.offsetSeconds;
+      v.currentTime = target;
+    }
+  }
+
+  toggleMiniPlayerMute(item: TimelineItem) {
+    const next = !this.miniPlayerMuted();
+    this.miniPlayerMuted.set(next);
+    const v = document.getElementById(`miniVideo-${item.id}`) as HTMLVideoElement | null;
+    if (v) {
+      v.muted = next;
+    }
+  }
+
+  onMiniPlayerCanPlay() {
+    if (this.miniPlayerState() === 'loading' || this.miniPlayerState() === 'waiting') {
+      this.miniPlayerState.set('playing');
+    }
+  }
+
+  onMiniPlayerPlaying() {
+    this.miniPlayerState.set('playing');
+  }
+
+  onMiniPlayerPause() {
+    if (this.miniPlayerState() !== 'error') {
+      this.miniPlayerState.set('paused');
+    }
+  }
+
+  onMiniPlayerWaiting() {
+    this.miniPlayerState.set('waiting');
+  }
+
+  onMiniPlayerError(item: TimelineItem) {
+    this.miniPlayerState.set('error');
+    this.miniPlayerErrorMsg.set('No se pudo decodificar el fragmento de video.');
+  }
+
+  openEventInMainPlayer(item: TimelineItem) {
+    if (!item.recording || !item.recording.hasRecording || !item.recording.fileName || !item.recording.date) {
+      return;
+    }
+
+    const seg: SegmentInfo = {
+      fileName: item.recording.fileName,
+      date: item.recording.date,
+      startTime: item.start_time.slice(11, 19),
+      fullTimestamp: item.start_time,
+      sizeBytes: 0,
+      durationSeconds: item.recording.durationSeconds || item.duration_s || 30,
+      isRecording: false,
+      hasThumb: true,
+    };
+
+    this.selectTab('recordings');
+    this.playSegment(seg, item.recording.offsetSeconds || 0);
   }
 
   playNextSegment() {
