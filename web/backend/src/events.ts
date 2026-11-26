@@ -3,6 +3,7 @@ import fs from 'fs';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
 import { addLog } from './logger.js';
+import { findRecordingForEvent, EventRecordingMatch } from './recordings.js';
 
 export interface MotionEvent {
   id: number;
@@ -185,4 +186,100 @@ export function cleanupOldEvents(retentionDays: number): number {
     addLog('error', `Error al limpiar eventos antiguos: ${err.message}`);
     return 0;
   }
+}
+
+export interface TimelineQuery {
+  page?: number;
+  limit?: number;
+  sort?: 'asc' | 'desc';
+  date?: string;
+  search?: string;
+}
+
+export interface TimelineItem extends MotionEvent {
+  camera: string;
+  recording: EventRecordingMatch;
+}
+
+export interface TimelineResult {
+  items: TimelineItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalItems: number;
+    totalPages: number;
+    sort: 'asc' | 'desc';
+  };
+}
+
+export function getEventRecording(id: number): EventRecordingMatch {
+  const event = getEventById(id);
+  if (!event) {
+    return {
+      hasRecording: false,
+      camera: 'C2L-Y-A (HD)',
+      message: 'Evento no encontrado',
+    };
+  }
+  return findRecordingForEvent(event.start_time, event.duration_s);
+}
+
+export function getTimelineEvents(query: TimelineQuery = {}): TimelineResult {
+  const db = getDb();
+  const page = Math.max(1, Number(query.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+  const sortDirection = query.sort === 'desc' ? 'DESC' : 'ASC'; // Default ASC per requirement!
+  const offset = (page - 1) * limit;
+
+  const whereConditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (query.date && /^\d{4}-\d{2}-\d{2}$/.test(query.date)) {
+    whereConditions.push('start_time LIKE ?');
+    params.push(`${query.date}%`);
+  }
+
+  if (query.search && query.search.trim()) {
+    const s = `%${query.search.trim()}%`;
+    whereConditions.push('(id LIKE ? OR source LIKE ?)');
+    params.push(s, s);
+  }
+
+  const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+  // Get total count
+  const countStmt = db.prepare(`SELECT COUNT(*) as count FROM motion_events ${whereClause}`);
+  const countRow = countStmt.get(...params) as { count: number } | undefined;
+  const totalItems = countRow ? Number(countRow.count) : 0;
+  const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+
+  // Query paginated items
+  const queryStmt = db.prepare(`
+    SELECT * FROM motion_events
+    ${whereClause}
+    ORDER BY start_time ${sortDirection}
+    LIMIT ? OFFSET ?
+  `);
+
+  const rows = queryStmt.all(...params, limit, offset) as unknown as MotionEvent[];
+
+  const items: TimelineItem[] = rows.map((ev) => {
+    const rec = findRecordingForEvent(ev.start_time, ev.duration_s);
+    return {
+      ...ev,
+      camera: 'C2L-Y-A (HD)',
+      recording: rec,
+    };
+  });
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      totalItems,
+      totalPages,
+      sort: query.sort === 'desc' ? 'desc' : 'asc',
+    },
+  };
 }

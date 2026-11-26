@@ -55,7 +55,13 @@ import {
   startDayNightPoller,
   dayNightEvents,
 } from './daynight.js';
-import { getEvents, getEventById, getEventSnapshot } from './events.js';
+import {
+  getEvents,
+  getEventById,
+  getEventSnapshot,
+  getEventRecording,
+  getTimelineEvents,
+} from './events.js';
 import { getMotionEngine, startMotionEngine, stopMotionEngine } from './motion.js';
 import { getRecorderManager, initRecorderManager, RecordingMode } from './recorder-manager.js';
 
@@ -349,6 +355,33 @@ fastify.register(async (protectedRoutes) => {
     reply.header('Content-Type', snap.contentType);
     reply.header('Cache-Control', 'public, max-age=86400');
     return reply.send(snap.buffer);
+  });
+
+  protectedRoutes.get('/api/events/:id/recording', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const idNum = parseInt(id, 10);
+    if (isNaN(idNum)) {
+      return reply.status(400).send({ error: 'ID de evento inválido' });
+    }
+    const rec = getEventRecording(idNum);
+    return { eventId: idNum, ...rec };
+  });
+
+  protectedRoutes.get('/api/timeline', async (req) => {
+    const query = req.query as {
+      page?: string;
+      limit?: string;
+      sort?: 'asc' | 'desc';
+      date?: string;
+      search?: string;
+    };
+    return getTimelineEvents({
+      page: query.page ? parseInt(query.page, 10) : 1,
+      limit: query.limit ? parseInt(query.limit, 10) : 20,
+      sort: query.sort === 'desc' ? 'desc' : 'asc',
+      date: query.date,
+      search: query.search,
+    });
   });
 
   // SSE Live Stream for Motion Events
