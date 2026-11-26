@@ -54,17 +54,21 @@ mkdir -p "$REC_DIR"
 
 while true; do
   TODAY=$(date +%Y-%m-%d)
-  mkdir -p "$REC_DIR/$TODAY"
+  TOMORROW=$(date -d "+1 day" +%Y-%m-%d 2>/dev/null || date +%Y-%m-%d)
+  mkdir -p "$REC_DIR/$TODAY" "$REC_DIR/$TOMORROW"
 
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting FFmpeg recording process..."
   
   "$FFMPEG_BIN" -hide_banner -loglevel warning \
     -rtsp_transport tcp \
+    -fflags +genpts \
     -i "$RTSP_URL" \
     -c copy \
-    -movflags +faststart \
+    -avoid_negative_ts make_zero \
     -f segment \
     -segment_time "$SEGMENT_LEN" \
+    -segment_format mp4 \
+    -segment_format_options movflags=+faststart \
     -reset_timestamps 1 \
     -strftime 1 \
     "$REC_DIR/%Y-%m-%d/c2l_%Y%m%d_%H%M%S.mp4" &
