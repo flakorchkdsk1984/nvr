@@ -425,33 +425,9 @@
             </div>
           </div>
         </section>
-
-        <!-- PRESETS 1..6 BELOW PLAYER -->
-        <div class="presets-section presets-below-player">
-          <div class="section-title">
-            <h4>🎯 Presets Rápidos (1–6)</h4>
-            <span class="subhint">Clic para mover cámara · ✏️ para cambiar emoji, nombre o guardar posición</span>
-          </div>
-          <div class="presets-grid">
-            @for (p of nvr.presets().slice(0, 6); track p.number) {
-              <div class="preset-card">
-                <button class="btn-preset-go" (click)="gotoPreset(p.number)" [title]="'Ir a Preset #' + p.number + ': ' + p.name">
-                  <span class="preset-emoji">{{ p.emoji || '🎯' }}</span>
-                  <span class="preset-meta">
-                    <span class="num">#{{ p.number }}</span>
-                    <span class="name">{{ p.name }}</span>
-                  </span>
-                </button>
-                <button class="btn-preset-edit" (click)="openSavePresetModal(p)" title="Editar emoji, nombre o guardar posición actual">
-                  ✏️
-                </button>
-              </div>
-            }
-          </div>
-        </div>
       </div>
 
-        <!-- PTZ Controller Panel -->
+        <!-- PTZ Controller Panel (matched to player width when below player, or docked right when split) -->
         <aside class="ptz-panel">
           <div class="panel-header">
             <div class="panel-header-top">
@@ -467,37 +443,39 @@
             <span class="subtext">Usa el D-pad o las teclas de flechas (↑ ↓ ← →)</span>
           </div>
 
-          <!-- Speed Slider -->
-          <div class="control-row speed-row">
-            <label for="speedRange">Velocidad: <strong>{{ ptzSpeed }}</strong></label>
-            <input
-              id="speedRange"
-              type="range"
-              min="1"
-              max="8"
-              [(ngModel)]="ptzSpeed"
-              class="slider"
-            />
-          </div>
+          <div class="ptz-settings-block">
+            <!-- Speed Slider -->
+            <div class="control-row speed-row">
+              <label for="speedRange">Velocidad: <strong>{{ ptzSpeed }}</strong></label>
+              <input
+                id="speedRange"
+                type="range"
+                min="1"
+                max="8"
+                [(ngModel)]="ptzSpeed"
+                class="slider"
+              />
+            </div>
 
-          <!-- Step vs Continuous Toggle + Save Config -->
-          <div class="control-row toggle-row">
-            <label class="toggle-label">
-              <input type="checkbox" [(ngModel)]="ptzContinuous" />
-              <span>Modo continuo (mantener presionado)</span>
-            </label>
-            <div class="ptz-config-save-row">
-              <button
-                class="btn-save-ptz-config"
-                (click)="savePtzConfig()"
-                [disabled]="ptzConfigSaving()"
-                title="Guardar velocidad y modo continuo como predeterminados"
-              >
-                {{ ptzConfigSaving() ? '⏳ Guardando...' : '💾 Guardar Config PTZ' }}
-              </button>
-              @if (ptzConfigSavedMsg()) {
-                <span class="ptz-saved-badge">✅ {{ ptzConfigSavedMsg() }}</span>
-              }
+            <!-- Step vs Continuous Toggle + Save Config -->
+            <div class="control-row toggle-row">
+              <label class="toggle-label">
+                <input type="checkbox" [(ngModel)]="ptzContinuous" />
+                <span>Modo continuo (mantener presionado)</span>
+              </label>
+              <div class="ptz-config-save-row">
+                <button
+                  class="btn-save-ptz-config"
+                  (click)="savePtzConfig()"
+                  [disabled]="ptzConfigSaving()"
+                  title="Guardar velocidad y modo continuo como predeterminados"
+                >
+                  {{ ptzConfigSaving() ? '⏳ Guardando...' : '💾 Guardar Config PTZ' }}
+                </button>
+                @if (ptzConfigSavedMsg()) {
+                  <span class="ptz-saved-badge">✅ {{ ptzConfigSavedMsg() }}</span>
+                }
+              </div>
             </div>
           </div>
 
@@ -707,6 +685,30 @@
                 }
               </div>
             }
+          </div>
+
+          <!-- PRESETS 1..6 AT FOOT OF PTZ CONTROLS -->
+          <div class="presets-section presets-ptz-footer">
+            <div class="section-title">
+              <h4>🎯 Presets Rápidos (1–6)</h4>
+              <span class="subhint">Clic para mover cámara · ✏️ editar emoji/nombre</span>
+            </div>
+            <div class="presets-grid">
+              @for (p of nvr.presets().slice(0, 6); track p.number) {
+                <div class="preset-card">
+                  <button class="btn-preset-go" (click)="gotoPreset(p.number)" [title]="'Ir a Preset #' + p.number + ': ' + p.name">
+                    <span class="preset-emoji">{{ p.emoji || '🎯' }}</span>
+                    <span class="preset-meta">
+                      <span class="num">#{{ p.number }}</span>
+                      <span class="name">{{ p.name }}</span>
+                    </span>
+                  </button>
+                  <button class="btn-preset-edit" (click)="openSavePresetModal(p)" title="Editar emoji, nombre o guardar posición actual">
+                    ✏️
+                  </button>
+                </div>
+              }
+            </div>
           </div>
         </aside>
       </div>

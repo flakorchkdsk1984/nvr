@@ -74,7 +74,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   );
 
   // Screen proportion (image vs controls) & compact UI preferences
-  imageRatio = signal<number>(82);
+  imageRatio = signal<number>(100);
   compactControls = signal<boolean>(true);
   videoFitMode = signal<'contain' | 'cover'>('contain');
   showLayoutBar = signal<boolean>(false);
@@ -197,7 +197,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       if (storedPtzCont !== null) {
         this.ptzContinuous = storedPtzCont === 'true';
       }
-      const storedRatio = localStorage.getItem('nvr_image_ratio');
+      const storedRatio = localStorage.getItem('nvr_image_ratio_v2');
       if (storedRatio !== null) {
         const r = parseInt(storedRatio, 10);
         if (r === 100 || (!isNaN(r) && r >= 65 && r <= 90)) {
@@ -398,7 +398,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     const clamped = ratio >= 95 ? 100 : Math.min(90, Math.max(65, Math.round(ratio)));
     this.imageRatio.set(clamped);
     try {
-      localStorage.setItem('nvr_image_ratio', String(clamped));
+      localStorage.setItem('nvr_image_ratio_v2', String(clamped));
     } catch {}
   }
 
