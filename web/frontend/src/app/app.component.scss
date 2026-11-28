@@ -146,6 +146,31 @@
       }
     }
 
+    .btn-theme-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 6px;
+
+      &:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+
+      &.cyber {
+        background: rgba(0, 245, 212, 0.12);
+        border-color: var(--primary);
+        color: var(--primary);
+        box-shadow: 0 0 10px rgba(0, 245, 212, 0.28);
+      }
+    }
+
     .btn-logout {
       padding: 6px 12px;
       background-color: var(--border-color);
@@ -645,6 +670,66 @@
             font-weight: 700;
           }
         }
+      }
+    }
+
+    .quick-record-bar {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+
+      .btn-quick-record {
+        width: 100%;
+        padding: 10px 14px;
+        background: rgba(239, 68, 68, 0.14);
+        border: 1px solid rgba(239, 68, 68, 0.45);
+        color: #fca5a5;
+        font-weight: 700;
+        font-size: 0.9rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.2s ease;
+
+        .rec-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          background-color: #ef4444;
+          display: inline-block;
+
+          &.pulse {
+            animation: pulseAnim 1.2s infinite;
+          }
+        }
+
+        &:hover:not(:disabled) {
+          background: rgba(239, 68, 68, 0.28);
+          border-color: #ef4444;
+          color: #fff;
+        }
+
+        &.recording {
+          background: rgba(220, 38, 38, 0.32);
+          border-color: #ef4444;
+          color: #fff;
+          box-shadow: 0 0 12px rgba(239, 68, 68, 0.35);
+        }
+
+        &:disabled {
+          opacity: 0.65;
+          cursor: wait;
+        }
+      }
+
+      .quick-rec-saved {
+        font-size: 0.78rem;
+        color: var(--success);
+        text-align: center;
+        word-break: break-all;
       }
     }
   }

@@ -386,6 +386,16 @@ fastify.register(async (protectedRoutes) => {
     protectedRoutes.post('/api/recorder/stop', async () => {
         return stopRecorder();
     });
+    // Isolated Quick Manual Recording (independent from continuous/motion)
+    protectedRoutes.post('/api/recorder/manual/start', async () => {
+        return await getRecorderManager().startManualRecording();
+    });
+    protectedRoutes.post('/api/recorder/manual/stop', async () => {
+        return await getRecorderManager().stopManualRecording();
+    });
+    protectedRoutes.post('/api/recorder/manual/toggle', async () => {
+        return await getRecorderManager().toggleManualRecording();
+    });
     // Storage and Retention
     protectedRoutes.get('/api/storage', async () => {
         return getStorageStats();

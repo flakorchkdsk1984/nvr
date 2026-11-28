@@ -232,6 +232,28 @@ export class NvrService {
     );
   }
 
+  toggleManualRecording(): Observable<{
+    success: boolean;
+    message: string;
+    fileName?: string;
+    date?: string;
+    sizeBytes?: number;
+    status: RecorderStatus;
+  }> {
+    return this.http.post<any>('/api/recorder/manual/toggle', {}).pipe(
+      tap((res) => {
+        if (res?.status) {
+          this.recorderStatus.set(res.status);
+        }
+        if (res?.fileName) {
+          this.fetchDays().subscribe();
+          this.fetchStorage().subscribe();
+          this.fetchLogs().subscribe();
+        }
+      })
+    );
+  }
+
   // Motion Events
   fetchEvents(date?: string): Observable<MotionEvent[]> {
     const url = date ? `/api/events?date=${date}` : '/api/events';

@@ -7,6 +7,7 @@ import { findRecordingForEvent } from '../src/recordings.js';
 import { fastify } from '../src/server.js';
 import { createToken } from '../src/auth.js';
 import { config } from '../src/config.js';
+import { getRecorderManager } from '../src/recorder-manager.js';
 
 describe('Timeline & Event Recording Tests', () => {
   test('should return paginated timeline events with ascending order by default', () => {
@@ -248,6 +249,48 @@ describe('Timeline & Event Recording Tests', () => {
 
       // Clean up synthetic latest test fixture
       fs.rmSync(latestDir, { recursive: true, force: true });
+    });
+
+    test('Manual quick-record endpoints require auth, report idle state, and generate collision-free unique filenames', async () => {
+      const unauthRes = await fastify.inject({
+        method: 'POST',
+        url: '/api/recorder/manual/toggle',
+      });
+      assert.strictEqual(unauthRes.statusCode, 401);
+
+      const modeRes = await fastify.inject({
+        method: 'GET',
+        url: '/api/recorder/mode',
+        headers: { authorization: `Bearer ${validToken}` },
+      });
+      assert.strictEqual(modeRes.statusCode, 200);
+      const modeJson = JSON.parse(modeRes.body);
+      assert.strictEqual(modeJson.isRecordingManual, false);
+
+      const stopIdleRes = await fastify.inject({
+        method: 'POST',
+        url: '/api/recorder/manual/stop',
+        headers: { authorization: `Bearer ${validToken}` },
+      });
+      assert.strictEqual(stopIdleRes.statusCode, 200);
+      const stopJson = JSON.parse(stopIdleRes.body);
+      assert.strictEqual(stopJson.success, false);
+      assert.strictEqual(stopJson.status.isRecordingManual, false);
+
+      // Verify collision-avoidance when continuous/motion already occupies the exact timestamp
+      const rm = getRecorderManager();
+      const collisionDate = new Date(2098, 4, 15, 12, 30, 0);
+      const existingDir = path.join(config.RECORDINGS_DIR, '2098-05-15');
+      const existingFile = path.join(existingDir, 'c2l_20980515_123000.mp4');
+      fs.mkdirSync(existingDir, { recursive: true });
+      fs.writeFileSync(existingFile, Buffer.alloc(64, 0));
+      try {
+        const res = (rm as any).buildUniqueManualTarget(collisionDate);
+        assert.strictEqual(res.dateStr, '2098-05-15');
+        assert.strictEqual(path.basename(res.targetFile), 'c2l_20980515_123001.mp4');
+      } finally {
+        fs.rmSync(existingDir, { recursive: true, force: true });
+      }
     });
   });
 });

@@ -143,6 +143,14 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   deletingDay = signal<DaySummary | null>(null);
   deleteDayLoading = signal<boolean>(false);
 
+  // Manual quick recording & UI Skin state
+  themeSkin = signal<'default' | 'cyberpunk'>('default');
+  manualRecordLoading = signal<boolean>(false);
+  manualElapsedText = signal<string>('00:00');
+  manualLastSavedMsg = signal<string>('');
+  private manualElapsedInterval: any = null;
+  private manualSavedTimeout: any = null;
+
   // Polling intervals
   private healthInterval: any = null;
 
@@ -159,7 +167,23 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       if (storedMuted !== null) {
         this.isMuted.set(storedMuted === 'true');
       }
+      const storedSkin = localStorage.getItem('nvr_theme_skin');
+      if (storedSkin === 'cyberpunk' || storedSkin === 'default') {
+        this.applyThemeSkin(storedSkin);
+      }
     } catch {}
+
+    this.manualElapsedInterval = setInterval(() => {
+      const st = this.nvr.recorderStatus();
+      if (st.isRecordingManual && st.manualStartedAt) {
+        const diffSec = Math.max(0, Math.floor((Date.now() - new Date(st.manualStartedAt).getTime()) / 1000));
+        const mins = Math.floor(diffSec / 60).toString().padStart(2, '0');
+        const secs = (diffSec % 60).toString().padStart(2, '0');
+        this.manualElapsedText.set(`${mins}:${secs}`);
+      } else {
+        this.manualElapsedText.set('00:00');
+      }
+    }, 1000);
 
     this.nvr.checkAuth().subscribe((user) => {
       if (user) {
@@ -180,6 +204,14 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
 
   ngOnDestroy() {
     this.isDestroyed = true;
+    if (this.manualElapsedInterval) {
+      clearInterval(this.manualElapsedInterval);
+      this.manualElapsedInterval = null;
+    }
+    if (this.manualSavedTimeout) {
+      clearTimeout(this.manualSavedTimeout);
+      this.manualSavedTimeout = null;
+    }
     if (this.cleanupMotionStream) {
       this.cleanupMotionStream();
       this.cleanupMotionStream = undefined;
@@ -338,6 +370,46 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
         this.recorderLoading.set(false);
       },
     });
+  }
+
+  // Independent Manual Quick Record (PTZ panel)
+  toggleManualRecord() {
+    if (this.manualRecordLoading()) return;
+    this.manualRecordLoading.set(true);
+    this.nvr.toggleManualRecording().subscribe({
+      next: (res) => {
+        this.manualRecordLoading.set(false);
+        if (res.fileName) {
+          this.manualLastSavedMsg.set(`Guardado: ${res.fileName}`);
+          if (this.manualSavedTimeout) clearTimeout(this.manualSavedTimeout);
+          this.manualSavedTimeout = setTimeout(() => this.manualLastSavedMsg.set(''), 5000);
+        }
+      },
+      error: (err) => {
+        console.error('Error en grabación rápida manual:', err);
+        this.manualRecordLoading.set(false);
+      },
+    });
+  }
+
+  // UI Skin Switcher (Modern Dark <-> Cyberpunk CRT)
+  toggleThemeSkin() {
+    const nextSkin = this.themeSkin() === 'cyberpunk' ? 'default' : 'cyberpunk';
+    this.applyThemeSkin(nextSkin);
+    try {
+      localStorage.setItem('nvr_theme_skin', nextSkin);
+    } catch {}
+  }
+
+  private applyThemeSkin(skin: 'default' | 'cyberpunk') {
+    this.themeSkin.set(skin);
+    if (typeof document !== 'undefined') {
+      if (skin === 'cyberpunk') {
+        document.documentElement.setAttribute('data-theme', 'cyberpunk');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+    }
   }
 
   // Snapshot modal for events

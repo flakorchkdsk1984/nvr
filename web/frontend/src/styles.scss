@@ -14,6 +14,93 @@
   --warning: #f59e0b;
 }
 
+// Cyberpunk Retro CRT Computer Skin
+html[data-theme="cyberpunk"] {
+  --bg-main: #030a06;
+  --bg-card: #07140d;
+  --bg-card-hover: #0d2317;
+  --border-color: #16a34a;
+  --text-main: #7dffb3;
+  --text-muted: #34d399;
+  --primary: #00f5d4;
+  --primary-hover: #00bbf9;
+  --accent: #ff2a85;
+  --danger: #ff2a6d;
+  --success: #39ff14;
+  --warning: #fcee09;
+
+  body {
+    font-family: "JetBrains Mono", "Fira Code", "Share Tech Mono", "Cascadia Mono", Consolas, "Courier New", monospace;
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(0, 245, 212, 0.08), transparent 60%),
+      linear-gradient(rgba(22, 163, 74, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(22, 163, 74, 0.04) 1px, transparent 1px);
+    background-size: 100% 100%, 28px 28px, 28px 28px;
+    text-shadow: 0 0 6px rgba(57, 255, 20, 0.22);
+  }
+
+  // Non-blocking CRT scanlines overlay
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.22) 0px,
+      rgba(0, 0, 0, 0.22) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  button, input, select {
+    border-radius: 2px !important;
+  }
+
+  .app-header,
+  .video-container,
+  .ptz-panel,
+  .sys-card,
+  .playback-box,
+  .timeline-table-card,
+  .event-card,
+  .segment-card,
+  .recordings-sidebar,
+  .events-header,
+  .pagination-bar,
+  .modal-box,
+  .login-card {
+    border-radius: 2px !important;
+    border-color: rgba(0, 245, 212, 0.45) !important;
+    box-shadow: 0 0 14px rgba(0, 245, 212, 0.1), inset 0 0 18px rgba(22, 163, 74, 0.06);
+  }
+
+  .app-header {
+    border-bottom: 2px solid var(--accent) !important;
+    box-shadow: 0 2px 18px rgba(255, 42, 133, 0.25);
+  }
+
+  .logo-title {
+    color: var(--primary);
+    text-shadow: 0 0 10px rgba(0, 245, 212, 0.65);
+    letter-spacing: 2px;
+  }
+
+  .nav-btn.active {
+    background: rgba(0, 245, 212, 0.14) !important;
+    border: 1px solid var(--primary) !important;
+    color: var(--primary) !important;
+    box-shadow: 0 0 10px rgba(0, 245, 212, 0.3);
+  }
+
+  video {
+    border: 1px solid rgba(0, 245, 212, 0.4);
+    text-shadow: none;
+  }
+}
+
 * {
   box-sizing: border-box;
   margin: 0;

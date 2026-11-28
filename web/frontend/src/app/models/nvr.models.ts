@@ -120,6 +120,8 @@ export interface RecorderStatus {
   mode: 'continuous' | 'motion' | 'paused';
   active: boolean;
   isRecordingMotion: boolean;
+  isRecordingManual?: boolean;
+  manualStartedAt?: string;
   currentSegment?: string;
   prerollBufferCount: number;
 }

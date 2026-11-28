@@ -15,6 +15,8 @@ export interface RecorderStatus {
   mode: RecordingMode;
   active: boolean;
   isRecordingMotion: boolean;
+  isRecordingManual: boolean;
+  manualStartedAt?: string;
   currentSegment?: string;
   prerollBufferCount: number;
 }
@@ -24,6 +26,11 @@ class RecorderManager {
   private continuousProcess: ChildProcess | null = null;
   private prerollProcess: ChildProcess | null = null;
   private motionRecordProcess: ChildProcess | null = null;
+  private manualRecordProcess: ChildProcess | null = null;
+  private manualTempFile: string | null = null;
+  private manualTargetFile: string | null = null;
+  private manualStartedAt: string | null = null;
+  private manualBusy = false;
   private activeMotionFile: string | null = null;
   private activeMotionTarget: string | null = null;
   private prerollSnapshotFiles: string[] = [];
@@ -122,6 +129,8 @@ class RecorderManager {
       mode: this.mode,
       active: isRunning,
       isRecordingMotion: this.isRecordingMotion,
+      isRecordingManual: !!this.manualRecordProcess,
+      manualStartedAt: this.manualStartedAt || undefined,
       currentSegment: this.activeMotionTarget || undefined,
       prerollBufferCount: prerollCount,
     };
@@ -326,7 +335,7 @@ class RecorderManager {
 
       const now = Date.now();
       const files = fs.readdirSync(prerollDir)
-        .filter(f => (f.startsWith('pre_') || f.startsWith('active_')) && (f.endsWith('.ts') || f.endsWith('.mp4')))
+        .filter(f => (f.startsWith('pre_') || f.startsWith('active_') || f.startsWith('manual_')) && (f.endsWith('.ts') || f.endsWith('.mp4')))
         .map(f => {
           const fullPath = path.join(prerollDir, f);
           try {
@@ -347,7 +356,8 @@ class RecorderManager {
         if (
           this.lockedFiles.has(file.fullPath) ||
           this.prerollSnapshotFiles.includes(file.fullPath) ||
-          this.activeMotionFile === file.fullPath
+          this.activeMotionFile === file.fullPath ||
+          this.manualTempFile === file.fullPath
         ) {
           continue;
         }
@@ -644,6 +654,179 @@ class RecorderManager {
       }
       for (const p of lockedPaths) this.lockedFiles.delete(p);
     }
+  }
+
+  // ==========================================
+  // ISOLATED MANUAL QUICK-RECORD (NEVER CLASHES)
+  // ==========================================
+  private buildUniqueManualTarget(baseNow: Date): { dateStr: string; targetFile: string } {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dateStr = `${baseNow.getFullYear()}-${pad(baseNow.getMonth() + 1)}-${pad(baseNow.getDate())}`;
+    const dateDir = path.join(config.RECORDINGS_DIR, dateStr);
+    if (!fs.existsSync(dateDir)) fs.mkdirSync(dateDir, { recursive: true });
+
+    // Bump +1s if another continuous/motion segment already claimed that exact second
+    for (let offset = 0; offset < 30; offset++) {
+      const d = new Date(baseNow.getTime() + offset * 1000);
+      const ts = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+      const candidate = path.join(dateDir, `c2l_${ts}.mp4`);
+      if (!fs.existsSync(candidate) && candidate !== this.activeMotionTarget) {
+        return { dateStr, targetFile: candidate };
+      }
+    }
+    const fallbackTs = `${baseNow.getFullYear()}${pad(baseNow.getMonth() + 1)}${pad(baseNow.getDate())}_${pad(baseNow.getHours())}${pad(baseNow.getMinutes())}${pad(baseNow.getSeconds())}`;
+    return { dateStr, targetFile: path.join(dateDir, `c2l_${fallbackTs}.mp4`) };
+  }
+
+  public async startManualRecording(): Promise<{ success: boolean; message: string; status: RecorderStatus }> {
+    if (this.manualBusy) {
+      return { success: false, message: 'Operación manual en curso, espera un instante.', status: this.getStatus() };
+    }
+    if (this.manualRecordProcess) {
+      return { success: true, message: 'La grabación manual ya está activa.', status: this.getStatus() };
+    }
+
+    this.manualBusy = true;
+    try {
+      const prerollDir = path.join(config.DATA_DIR, 'preroll');
+      if (!fs.existsSync(prerollDir)) fs.mkdirSync(prerollDir, { recursive: true });
+
+      const now = new Date();
+      const { targetFile } = this.buildUniqueManualTarget(now);
+      const tempFile = path.join(prerollDir, `manual_${Date.now()}.ts`);
+      const rtspUrl = `${config.GO2RTC_RTSP}/c2l_hd`;
+
+      const args = [
+        '-hide_banner', '-loglevel', 'warning',
+        '-rtsp_transport', 'tcp',
+        '-fflags', '+genpts',
+        '-i', rtspUrl,
+        '-c', 'copy',
+        '-f', 'mpegts',
+        tempFile,
+      ];
+
+      const proc = spawn(config.FFMPEG_PATH, args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      this.manualRecordProcess = proc;
+      this.manualTempFile = tempFile;
+      this.manualTargetFile = targetFile;
+      this.manualStartedAt = now.toISOString();
+      this.attachPipeDrain(proc, 'manual-record');
+
+      proc.on('exit', () => {
+        if (this.manualRecordProcess === proc) {
+          this.manualRecordProcess = null;
+        }
+      });
+
+      addLog('info', `Grabación manual rápida INICIADA (independiente): ${path.basename(targetFile)}`);
+      return { success: true, message: 'Grabación manual iniciada', status: this.getStatus() };
+    } catch (err: any) {
+      addLog('error', `Error iniciando grabación manual: ${err.message}`);
+      return { success: false, message: err.message, status: this.getStatus() };
+    } finally {
+      this.manualBusy = false;
+    }
+  }
+
+  public async stopManualRecording(): Promise<{
+    success: boolean;
+    message: string;
+    fileName?: string;
+    date?: string;
+    sizeBytes?: number;
+    status: RecorderStatus;
+  }> {
+    if (this.manualBusy) {
+      return { success: false, message: 'Finalización manual en curso.', status: this.getStatus() };
+    }
+    const proc = this.manualRecordProcess;
+    const tempFile = this.manualTempFile;
+    const targetFile = this.manualTargetFile;
+
+    if (!proc && !tempFile) {
+      return { success: false, message: 'No hay grabación manual activa.', status: this.getStatus() };
+    }
+
+    this.manualBusy = true;
+    this.manualRecordProcess = null;
+    this.manualTempFile = null;
+    this.manualTargetFile = null;
+    this.manualStartedAt = null;
+
+    if (tempFile) this.lockedFiles.add(tempFile);
+
+    try {
+      if (proc) {
+        await new Promise<void>((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            resolve();
+          };
+          const safetyTimeout = setTimeout(() => {
+            try { proc.kill('SIGKILL'); } catch {}
+            finish();
+          }, 5000);
+          proc.once('exit', () => {
+            clearTimeout(safetyTimeout);
+            finish();
+          });
+          try {
+            proc.kill('SIGINT');
+          } catch {
+            clearTimeout(safetyTimeout);
+            finish();
+          }
+        });
+      }
+
+      if (!tempFile || !targetFile || !fs.existsSync(tempFile) || fs.statSync(tempFile).size < 1000) {
+        addLog('warn', 'Grabación manual detenida sin datos suficientes aún.');
+        return { success: false, message: 'Sin datos suficientes (espera al menos 2s antes de detener).', status: this.getStatus() };
+      }
+
+      // Guarantee unique target path right before saving in case another file appeared in the meantime
+      let finalTarget = targetFile;
+      if (fs.existsSync(finalTarget)) {
+        finalTarget = this.buildUniqueManualTarget(new Date()).targetFile;
+      }
+
+      await this.remuxTsToMp4([tempFile], finalTarget);
+      const stat = fs.statSync(finalTarget);
+      const fileName = path.basename(finalTarget);
+      const date = path.basename(path.dirname(finalTarget));
+      addLog('info', `Grabación manual rápida guardada: ${fileName} (${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
+      return {
+        success: true,
+        message: `Clip guardado: ${fileName}`,
+        fileName,
+        date,
+        sizeBytes: stat.size,
+        status: this.getStatus(),
+      };
+    } catch (err: any) {
+      addLog('error', `Error finalizando grabación manual: ${err.message}`);
+      return { success: false, message: err.message, status: this.getStatus() };
+    } finally {
+      if (tempFile) {
+        if (fs.existsSync(tempFile)) {
+          try { fs.unlinkSync(tempFile); } catch {}
+        }
+        this.lockedFiles.delete(tempFile);
+      }
+      this.manualBusy = false;
+    }
+  }
+
+  public async toggleManualRecording() {
+    if (this.manualRecordProcess) {
+      return await this.stopManualRecording();
+    }
+    return await this.startManualRecording();
   }
 }
 

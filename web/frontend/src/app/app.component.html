@@ -63,7 +63,35 @@
         </span>
       }
 
+      <button
+        class="btn-theme-switch"
+        [class.cyber]="themeSkin() === 'cyberpunk'"
+        (click)="toggleThemeSkin()"
+        [title]="themeSkin() === 'cyberpunk' ? 'Volver al skin moderno' : 'Activar skin Cyberpunk CRT'"
+      >
+        @if (themeSkin() === 'cyberpunk') {
+          🖥️ CRT_CYBER
+        } @else {
+          🌆 Cyberpunk
+        }
+      </button>
+
       <button class="btn-logout" (click)="onLogout()" title="Cerrar sesión">Salir</button>
+    </div>
+  } @else {
+    <div class="header-status">
+      <button
+        class="btn-theme-switch"
+        [class.cyber]="themeSkin() === 'cyberpunk'"
+        (click)="toggleThemeSkin()"
+        [title]="themeSkin() === 'cyberpunk' ? 'Volver al skin moderno' : 'Activar skin Cyberpunk CRT'"
+      >
+        @if (themeSkin() === 'cyberpunk') {
+          🖥️ CRT_CYBER
+        } @else {
+          🌆 Cyberpunk
+        }
+      </button>
     </div>
   }
 </header>
@@ -446,6 +474,28 @@
               >
                 🔍 −
               </button>
+            </div>
+
+            <!-- Independent Quick Manual Recording -->
+            <div class="quick-record-bar">
+              <button
+                class="btn-quick-record"
+                [class.recording]="nvr.recorderStatus().isRecordingManual"
+                [disabled]="manualRecordLoading()"
+                (click)="toggleManualRecord()"
+                title="Grabar clip rápido independiente (no afecta grabación 24/7 ni detección de movimiento)"
+              >
+                @if (manualRecordLoading()) {
+                  <span class="rec-dot"></span> Procesando...
+                } @else if (nvr.recorderStatus().isRecordingManual) {
+                  <span class="rec-dot pulse"></span> Detener Clip ({{ manualElapsedText() }})
+                } @else {
+                  <span class="rec-dot"></span> Grabar Clip Rápido
+                }
+              </button>
+              @if (manualLastSavedMsg()) {
+                <div class="quick-rec-saved">✅ {{ manualLastSavedMsg() }}</div>
+              }
             </div>
           </div>
 
