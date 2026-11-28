@@ -525,7 +525,7 @@
         <aside class="recordings-sidebar">
           <h3>📅 Días con Grabación</h3>
           <div class="days-list">
-            @for (d of nvr.days(); track d.date) {
+            @for (d of nvr.days(); track d.date; let idx = $index) {
               <div class="day-row" [class.selected]="nvr.currentDate() === d.date">
                 <button
                   class="day-item"
@@ -535,13 +535,22 @@
                   <span class="day-date">{{ d.date }}</span>
                   <span class="day-meta">{{ d.segmentCount }} segmentos ({{ formatBytes(d.totalSizeBytes) }})</span>
                 </button>
-                <button
-                  class="btn-delete-day-sm"
-                  (click)="openDeleteDayModal(d, $event)"
-                  [title]="'Borrar todas las grabaciones del día ' + d.date"
-                >
-                  🗑️
-                </button>
+                @if (isDayProtected(d.date, idx)) {
+                  <span
+                    class="day-protected-badge"
+                    title="El último día / día en curso no se puede borrar mientras el sistema graba"
+                  >
+                    🔒
+                  </span>
+                } @else {
+                  <button
+                    class="btn-delete-day-sm"
+                    (click)="openDeleteDayModal(d, $event)"
+                    [title]="'Borrar todas las grabaciones del día ' + d.date"
+                  >
+                    🗑️
+                  </button>
+                }
               </div>
             } @empty {
               <p class="empty-text">No hay grabaciones archivadas aún.</p>
@@ -639,7 +648,7 @@
               <h3>Segmentos de Grabación: {{ nvr.currentDate() || 'Sin día seleccionado' }}</h3>
               <span class="segments-count">{{ nvr.segments().length }} clips</span>
             </div>
-            @if (nvr.currentDate()) {
+            @if (nvr.currentDate() && !isDayProtected(nvr.currentDate())) {
               <button
                 class="btn-delete-day-header"
                 (click)="openCurrentDayDeleteModal()"
@@ -647,6 +656,13 @@
               >
                 🗑️ Borrar Día
               </button>
+            } @else if (nvr.currentDate()) {
+              <span
+                class="day-protected-pill"
+                title="El último día / día en curso está protegido y no puede eliminarse completo"
+              >
+                🔒 Día actual protegido
+              </span>
             }
           </div>
 

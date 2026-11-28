@@ -219,6 +219,22 @@ describe('Timeline & Event Recording Tests', () => {
       fs.mkdirSync(testDir, { recursive: true });
       fs.writeFileSync(testFile, Buffer.alloc(2048, 1));
 
+      const latestDate = '2099-01-01';
+      const latestDir = path.join(config.RECORDINGS_DIR, latestDate);
+      const latestFile = path.join(latestDir, 'c2l_20990101_000001.mp4');
+      fs.mkdirSync(latestDir, { recursive: true });
+      fs.writeFileSync(latestFile, Buffer.alloc(2048, 1));
+
+      // Latest/current day must be protected (409 Conflict)
+      const protRes = await fastify.inject({
+        method: 'DELETE',
+        url: `/api/recordings/${latestDate}`,
+        headers: { authorization: `Bearer ${validToken}` },
+      });
+      assert.strictEqual(protRes.statusCode, 409);
+      assert.strictEqual(fs.existsSync(latestDir), true);
+
+      // Historical older day can be deleted cleanly (200 OK)
       const delRes = await fastify.inject({
         method: 'DELETE',
         url: `/api/recordings/${testDate}`,
@@ -229,6 +245,9 @@ describe('Timeline & Event Recording Tests', () => {
       assert.strictEqual(delJson.success, true);
       assert.strictEqual(delJson.deletedCount, 1);
       assert.strictEqual(fs.existsSync(testDir), false);
+
+      // Clean up synthetic latest test fixture
+      fs.rmSync(latestDir, { recursive: true, force: true });
     });
   });
 });

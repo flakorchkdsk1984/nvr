@@ -14,7 +14,7 @@ import { config } from './config.js';
 import { addLog, getLogs } from './logger.js';
 import { requireAuth, verifyUserCredentials, createToken, AUTH_COOKIE_OPTS, } from './auth.js';
 import { PtzMoveSchema, PtzPresetSchema, executePtzMove, executePtzPreset, getPresetsList, } from './ptz.js';
-import { getAvailableDays, scanDateFolder, validateRecordingPath, generateThumbnail, exportClip, deleteSegment, deleteDay, initRecordingsWatcher, DATE_REGEX, } from './recordings.js';
+import { getAvailableDays, scanDateFolder, validateRecordingPath, generateThumbnail, exportClip, deleteSegment, deleteDay, ProtectedDayError, initRecordingsWatcher, DATE_REGEX, } from './recordings.js';
 import { getStorageStats, runRetentionCycle, initRetentionScheduler, } from './storage.js';
 import { checkSystemHealth, getLiveSnapshotBuffer, startRecorder, stopRecorder, updateCameraConfig, } from './system.js';
 import { getLightState } from './light.js';
@@ -223,6 +223,9 @@ fastify.register(async (protectedRoutes) => {
             return { success: true, date, ...result };
         }
         catch (err) {
+            if (err instanceof ProtectedDayError || err?.statusCode === 409) {
+                return reply.status(409).send({ error: err.message });
+            }
             return reply.status(400).send({ error: err.message });
         }
     });

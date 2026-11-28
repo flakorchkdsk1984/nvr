@@ -276,6 +276,27 @@ export function deleteSegment(date, fileName) {
     addLog('info', `Manually deleted recording: ${date}/${fileName}`);
     return true;
 }
+export class ProtectedDayError extends Error {
+    statusCode = 409;
+    constructor(message) {
+        super(message);
+        this.name = 'ProtectedDayError';
+    }
+}
+export function isDayProtected(date) {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const todayUtc = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+    if (date >= todayLocal || date >= todayUtc) {
+        return true;
+    }
+    const days = getAvailableDays();
+    if (days.length > 0 && days[0].date === date) {
+        return true;
+    }
+    return false;
+}
 export function deleteDay(date) {
     if (!DATE_REGEX.test(date)) {
         throw new Error('Invalid date format (must be YYYY-MM-DD)');
@@ -287,6 +308,9 @@ export function deleteDay(date) {
     }
     if (!fs.existsSync(dirPath)) {
         return null;
+    }
+    if (isDayProtected(date)) {
+        throw new ProtectedDayError(`El día más reciente o en curso (${date}) está protegido y no se puede eliminar.`);
     }
     let deletedCount = 0;
     let freedBytes = 0;

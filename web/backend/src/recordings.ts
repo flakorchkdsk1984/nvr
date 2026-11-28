@@ -317,6 +317,29 @@ export function deleteSegment(date: string, fileName: string): boolean {
   return true;
 }
 
+export class ProtectedDayError extends Error {
+  public readonly statusCode = 409;
+  constructor(message: string) {
+    super(message);
+    this.name = 'ProtectedDayError';
+  }
+}
+
+export function isDayProtected(date: string): boolean {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const todayUtc = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+  if (date >= todayLocal || date >= todayUtc) {
+    return true;
+  }
+  const days = getAvailableDays();
+  if (days.length > 0 && days[0].date === date) {
+    return true;
+  }
+  return false;
+}
+
 export function deleteDay(date: string): { deletedCount: number; freedBytes: number } | null {
   if (!DATE_REGEX.test(date)) {
     throw new Error('Invalid date format (must be YYYY-MM-DD)');
@@ -330,6 +353,10 @@ export function deleteDay(date: string): { deletedCount: number; freedBytes: num
 
   if (!fs.existsSync(dirPath)) {
     return null;
+  }
+
+  if (isDayProtected(date)) {
+    throw new ProtectedDayError(`El día más reciente o en curso (${date}) está protegido y no se puede eliminar.`);
   }
 
   let deletedCount = 0;

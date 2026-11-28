@@ -186,14 +186,19 @@ class RecorderManager {
     this.prerollSnapshotFiles = [];
   }
 
-  private ensureDateDirectories(recDir: string): void {
+  private ensureDateDirectories(recDir: string): boolean {
+    let createdToday = false;
     const pad = (n: number) => String(n).padStart(2, '0');
     for (const offsetDays of [0, 1]) {
       const d = new Date(Date.now() + offsetDays * 86400000);
       const dateFolder = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
       const full = path.join(recDir, dateFolder);
-      if (!fs.existsSync(full)) fs.mkdirSync(full, { recursive: true });
+      if (!fs.existsSync(full)) {
+        fs.mkdirSync(full, { recursive: true });
+        if (offsetDays === 0) createdToday = true;
+      }
     }
+    return createdToday;
   }
 
   // ==========================================
@@ -211,8 +216,12 @@ class RecorderManager {
 
     if (this.dateDirInterval) clearInterval(this.dateDirInterval);
     this.dateDirInterval = setInterval(() => {
-      this.ensureDateDirectories(recDir);
-    }, 10 * 60 * 1000);
+      const recreatedToday = this.ensureDateDirectories(recDir);
+      if (recreatedToday && this.mode === 'continuous' && this.continuousProcess) {
+        addLog('warn', 'Carpeta del día actual recreada; reiniciando segmento continuo FFmpeg...');
+        try { this.continuousProcess.kill('SIGTERM'); } catch {}
+      }
+    }, 15 * 1000);
 
     const args = [
       '-hide_banner', '-loglevel', 'warning',

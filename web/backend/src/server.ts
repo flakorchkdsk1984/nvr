@@ -35,6 +35,7 @@ import {
   exportClip,
   deleteSegment,
   deleteDay,
+  ProtectedDayError,
   initRecordingsWatcher,
   DATE_REGEX,
 } from './recordings.js';
@@ -304,6 +305,9 @@ fastify.register(async (protectedRoutes) => {
       }
       return { success: true, date, ...result };
     } catch (err: any) {
+      if (err instanceof ProtectedDayError || err?.statusCode === 409) {
+        return reply.status(409).send({ error: err.message });
+      }
       return reply.status(400).send({ error: err.message });
     }
   });

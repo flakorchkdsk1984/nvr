@@ -1105,16 +1105,29 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  isDayProtected(date: string, index?: number): boolean {
+    if (!date) return true;
+    if (index === 0) return true;
+    const days = this.nvr.days();
+    if (days.length > 0 && days[0].date === date) return true;
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const todayUtc = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}`;
+    return date >= todayLocal || date >= todayUtc;
+  }
+
   openDeleteDayModal(day: DaySummary, event?: Event) {
     if (event) {
       event.stopPropagation();
     }
+    if (this.isDayProtected(day.date)) return;
     this.deletingDay.set(day);
   }
 
   openCurrentDayDeleteModal() {
     const cur = this.nvr.currentDate();
-    if (!cur) return;
+    if (!cur || this.isDayProtected(cur)) return;
     const found = this.nvr.days().find((d) => d.date === cur);
     this.deletingDay.set(
       found || {
