@@ -1,5 +1,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs';
+import path from 'path';
 import { getTimelineEvents, getEventRecording } from '../src/events.js';
 import { findRecordingForEvent } from '../src/recordings.js';
 import { fastify } from '../src/server.js';
@@ -194,6 +196,39 @@ describe('Timeline & Event Recording Tests', () => {
           assert.ok(String(rangeRes.headers['content-range']).startsWith('bytes 0-1023/'));
         }
       }
+    });
+
+    test('DELETE /api/recordings/:date validates date, returns 404 when missing, and deletes entire day folder', async () => {
+      const badRes = await fastify.inject({
+        method: 'DELETE',
+        url: '/api/recordings/invalid-date',
+        headers: { authorization: `Bearer ${validToken}` },
+      });
+      assert.strictEqual(badRes.statusCode, 400);
+
+      const missRes = await fastify.inject({
+        method: 'DELETE',
+        url: '/api/recordings/1998-01-01',
+        headers: { authorization: `Bearer ${validToken}` },
+      });
+      assert.strictEqual(missRes.statusCode, 404);
+
+      const testDate = '1999-01-01';
+      const testDir = path.join(config.RECORDINGS_DIR, testDate);
+      const testFile = path.join(testDir, 'c2l_19990101_000001.mp4');
+      fs.mkdirSync(testDir, { recursive: true });
+      fs.writeFileSync(testFile, Buffer.alloc(2048, 1));
+
+      const delRes = await fastify.inject({
+        method: 'DELETE',
+        url: `/api/recordings/${testDate}`,
+        headers: { authorization: `Bearer ${validToken}` },
+      });
+      assert.strictEqual(delRes.statusCode, 200);
+      const delJson = JSON.parse(delRes.body);
+      assert.strictEqual(delJson.success, true);
+      assert.strictEqual(delJson.deletedCount, 1);
+      assert.strictEqual(fs.existsSync(testDir), false);
     });
   });
 });

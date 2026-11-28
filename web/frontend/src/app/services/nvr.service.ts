@@ -138,6 +138,20 @@ export class NvrService {
     );
   }
 
+  deleteDay(date: string): Observable<{ success: boolean; date: string; deletedCount: number; freedBytes: number }> {
+    return this.http.delete<{ success: boolean; date: string; deletedCount: number; freedBytes: number }>(`/api/recordings/${date}`).pipe(
+      tap(() => {
+        if (this.currentDate() === date) {
+          this.currentDate.set('');
+          this.segments.set([]);
+        }
+        this.fetchDays().subscribe();
+        this.fetchStorage().subscribe();
+        this.fetchLogs().subscribe();
+      })
+    );
+  }
+
   exportClip(date: string, file: string, startSeconds: number, durationSeconds: number): Observable<{ downloadUrl: string }> {
     return this.http.post<{ downloadUrl: string }>('/api/recordings/clip', {
       date,

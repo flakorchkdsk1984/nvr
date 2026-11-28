@@ -526,14 +526,23 @@
           <h3>📅 Días con Grabación</h3>
           <div class="days-list">
             @for (d of nvr.days(); track d.date) {
-              <button
-                class="day-item"
-                [class.selected]="nvr.currentDate() === d.date"
-                (click)="selectDate(d.date)"
-              >
-                <span class="day-date">{{ d.date }}</span>
-                <span class="day-meta">{{ d.segmentCount }} segmentos ({{ formatBytes(d.totalSizeBytes) }})</span>
-              </button>
+              <div class="day-row" [class.selected]="nvr.currentDate() === d.date">
+                <button
+                  class="day-item"
+                  [class.selected]="nvr.currentDate() === d.date"
+                  (click)="selectDate(d.date)"
+                >
+                  <span class="day-date">{{ d.date }}</span>
+                  <span class="day-meta">{{ d.segmentCount }} segmentos ({{ formatBytes(d.totalSizeBytes) }})</span>
+                </button>
+                <button
+                  class="btn-delete-day-sm"
+                  (click)="openDeleteDayModal(d, $event)"
+                  [title]="'Borrar todas las grabaciones del día ' + d.date"
+                >
+                  🗑️
+                </button>
+              </div>
             } @empty {
               <p class="empty-text">No hay grabaciones archivadas aún.</p>
             }
@@ -626,8 +635,19 @@
 
           <!-- Segments Timeline and Grid -->
           <div class="segments-header">
-            <h3>Segmentos de Grabación: {{ nvr.currentDate() }}</h3>
-            <span class="segments-count">{{ nvr.segments().length }} clips (segmentos de 15 min)</span>
+            <div>
+              <h3>Segmentos de Grabación: {{ nvr.currentDate() || 'Sin día seleccionado' }}</h3>
+              <span class="segments-count">{{ nvr.segments().length }} clips</span>
+            </div>
+            @if (nvr.currentDate()) {
+              <button
+                class="btn-delete-day-header"
+                (click)="openCurrentDayDeleteModal()"
+                [title]="'Eliminar todas las grabaciones del día ' + nvr.currentDate()"
+              >
+                🗑️ Borrar Día
+              </button>
+            }
           </div>
 
           <div class="segments-grid">
@@ -1363,6 +1383,32 @@
       </div>
       <div class="snapshot-modal-body">
         <img [src]="modal.url" alt="Captura ampliada" class="full-size-snapshot" />
+      </div>
+    </div>
+  </div>
+}
+
+<!-- DELETE DAY CONFIRMATION MODAL -->
+@if (deletingDay(); as day) {
+  <div class="modal-backdrop" (click)="cancelDeleteDay()">
+    <div class="modal-box delete-day-modal" (click)="$event.stopPropagation()">
+      <h4>⚠️ Confirmar Eliminación de Día</h4>
+      <p class="delete-day-warning">
+        ¿Estás seguro de que deseas eliminar permanentemente <strong>todas las grabaciones</strong> del día
+        <strong>{{ day.date }}</strong>?
+      </p>
+      <div class="delete-day-summary">
+        <span>📁 Fecha: <strong>{{ day.date }}</strong></span>
+        <span>🎞️ Archivos: <strong>{{ day.segmentCount }} segmentos</strong></span>
+        <span>💾 Espacio a liberar: <strong>{{ formatBytes(day.totalSizeBytes) }}</strong></span>
+      </div>
+      <p class="delete-day-note">Esta acción eliminará los videos MP4 y sus miniaturas de caché y no se puede deshacer.</p>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" [disabled]="deleteDayLoading()" (click)="cancelDeleteDay()">Cancelar</button>
+        <button class="btn-danger-confirm" [disabled]="deleteDayLoading()" (click)="confirmDeleteDay()">
+          {{ deleteDayLoading() ? 'Eliminando...' : '🗑️ Sí, Borrar Día Completo' }}
+        </button>
       </div>
     </div>
   </div>

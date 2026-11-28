@@ -14,7 +14,7 @@ import { config } from './config.js';
 import { addLog, getLogs } from './logger.js';
 import { requireAuth, verifyUserCredentials, createToken, AUTH_COOKIE_OPTS, } from './auth.js';
 import { PtzMoveSchema, PtzPresetSchema, executePtzMove, executePtzPreset, getPresetsList, } from './ptz.js';
-import { getAvailableDays, scanDateFolder, validateRecordingPath, generateThumbnail, exportClip, deleteSegment, initRecordingsWatcher, DATE_REGEX, } from './recordings.js';
+import { getAvailableDays, scanDateFolder, validateRecordingPath, generateThumbnail, exportClip, deleteSegment, deleteDay, initRecordingsWatcher, DATE_REGEX, } from './recordings.js';
 import { getStorageStats, runRetentionCycle, initRetentionScheduler, } from './storage.js';
 import { checkSystemHealth, getLiveSnapshotBuffer, startRecorder, stopRecorder, updateCameraConfig, } from './system.js';
 import { getLightState } from './light.js';
@@ -211,6 +211,20 @@ fastify.register(async (protectedRoutes) => {
         reply.header('Content-Type', 'video/mp4');
         reply.header('Content-Disposition', `attachment; filename="${file}"`);
         return reply.send(fs.createReadStream(clipPath));
+    });
+    // Delete Day Recordings
+    protectedRoutes.delete('/api/recordings/:date', async (req, reply) => {
+        const { date } = req.params;
+        try {
+            const result = deleteDay(date);
+            if (!result) {
+                return reply.status(404).send({ error: 'Recording day folder not found' });
+            }
+            return { success: true, date, ...result };
+        }
+        catch (err) {
+            return reply.status(400).send({ error: err.message });
+        }
     });
     // Delete Segment
     protectedRoutes.delete('/api/recordings/:date/:file', async (req, reply) => {

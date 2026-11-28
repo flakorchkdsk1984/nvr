@@ -317,6 +317,58 @@ export function deleteSegment(date: string, fileName: string): boolean {
   return true;
 }
 
+export function deleteDay(date: string): { deletedCount: number; freedBytes: number } | null {
+  if (!DATE_REGEX.test(date)) {
+    throw new Error('Invalid date format (must be YYYY-MM-DD)');
+  }
+
+  const recordingsRoot = path.resolve(config.RECORDINGS_DIR);
+  const dirPath = path.resolve(recordingsRoot, date);
+  if (!dirPath.startsWith(recordingsRoot + path.sep)) {
+    throw new Error('Access denied: path traversal detected');
+  }
+
+  if (!fs.existsSync(dirPath)) {
+    return null;
+  }
+
+  let deletedCount = 0;
+  let freedBytes = 0;
+
+  const files = fs.readdirSync(dirPath);
+  for (const f of files) {
+    const fPath = path.join(dirPath, f);
+    try {
+      const stat = fs.statSync(fPath);
+      if (stat.isFile()) {
+        fs.unlinkSync(fPath);
+        deletedCount++;
+        freedBytes += stat.size;
+
+        const baseName = path.parse(f).name;
+        if (fs.existsSync(config.THUMBS_DIR)) {
+          for (const t of fs.readdirSync(config.THUMBS_DIR)) {
+            if (t === `${baseName}.jpg` || t.startsWith(`${baseName}_at`)) {
+              try { fs.unlinkSync(path.join(config.THUMBS_DIR, t)); } catch {}
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  segmentsCache.delete(date);
+
+  try {
+    if (fs.readdirSync(dirPath).length === 0) {
+      fs.rmdirSync(dirPath);
+    }
+  } catch {}
+
+  addLog('info', `Manually deleted recordings for day ${date}: ${deletedCount} files (${(freedBytes / 1024 / 1024).toFixed(2)} MB)`);
+  return { deletedCount, freedBytes };
+}
+
 export function initRecordingsWatcher() {
   if (watcher) return;
   watcher = chokidar.watch(config.RECORDINGS_DIR, {

@@ -34,6 +34,7 @@ import {
   generateThumbnail,
   exportClip,
   deleteSegment,
+  deleteDay,
   initRecordingsWatcher,
   DATE_REGEX,
 } from './recordings.js';
@@ -291,6 +292,20 @@ fastify.register(async (protectedRoutes) => {
     reply.header('Content-Type', 'video/mp4');
     reply.header('Content-Disposition', `attachment; filename="${file}"`);
     return reply.send(fs.createReadStream(clipPath));
+  });
+
+  // Delete Day Recordings
+  protectedRoutes.delete('/api/recordings/:date', async (req, reply) => {
+    const { date } = req.params as { date: string };
+    try {
+      const result = deleteDay(date);
+      if (!result) {
+        return reply.status(404).send({ error: 'Recording day folder not found' });
+      }
+      return { success: true, date, ...result };
+    } catch (err: any) {
+      return reply.status(400).send({ error: err.message });
+    }
   });
 
   // Delete Segment

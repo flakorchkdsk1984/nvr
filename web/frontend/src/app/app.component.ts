@@ -15,6 +15,7 @@ import Hls from 'hls.js';
 import { NvrService } from './services/nvr.service';
 import {
   SegmentInfo,
+  DaySummary,
   PresetInfo,
   MotionEvent,
   TimelineItem,
@@ -137,6 +138,10 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   clipDurationSeconds = 60;
   exportingLoading = signal<boolean>(false);
   exportedDownloadUrl = signal<string | null>(null);
+
+  // Delete Day Confirmation Modal state
+  deletingDay = signal<DaySummary | null>(null);
+  deleteDayLoading = signal<boolean>(false);
 
   // Polling intervals
   private healthInterval: any = null;
@@ -1098,6 +1103,51 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
         }
       });
     }
+  }
+
+  openDeleteDayModal(day: DaySummary, event?: Event) {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.deletingDay.set(day);
+  }
+
+  openCurrentDayDeleteModal() {
+    const cur = this.nvr.currentDate();
+    if (!cur) return;
+    const found = this.nvr.days().find((d) => d.date === cur);
+    this.deletingDay.set(
+      found || {
+        date: cur,
+        segmentCount: this.nvr.segments().length,
+        totalSizeBytes: this.nvr.segments().reduce((acc, s) => acc + s.sizeBytes, 0),
+      }
+    );
+  }
+
+  cancelDeleteDay() {
+    if (this.deleteDayLoading()) return;
+    this.deletingDay.set(null);
+  }
+
+  confirmDeleteDay() {
+    const day = this.deletingDay();
+    if (!day || this.deleteDayLoading()) return;
+
+    this.deleteDayLoading.set(true);
+    this.nvr.deleteDay(day.date).subscribe({
+      next: () => {
+        if (this.activeSegment()?.date === day.date) {
+          this.activeSegment.set(null);
+        }
+        this.deleteDayLoading.set(false);
+        this.deletingDay.set(null);
+      },
+      error: (err) => {
+        this.deleteDayLoading.set(false);
+        alert(`Error al eliminar el día ${day.date}: ${err.error?.error || err.message}`);
+      },
+    });
   }
 
   openExportClipModal(seg: SegmentInfo) {
