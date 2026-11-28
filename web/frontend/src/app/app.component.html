@@ -414,12 +414,25 @@
             />
           </div>
 
-          <!-- Step vs Continuous Toggle -->
+          <!-- Step vs Continuous Toggle + Save Config -->
           <div class="control-row toggle-row">
             <label class="toggle-label">
               <input type="checkbox" [(ngModel)]="ptzContinuous" />
               <span>Modo continuo (mantener presionado)</span>
             </label>
+            <div class="ptz-config-save-row">
+              <button
+                class="btn-save-ptz-config"
+                (click)="savePtzConfig()"
+                [disabled]="ptzConfigSaving()"
+                title="Guardar velocidad y modo continuo como predeterminados"
+              >
+                {{ ptzConfigSaving() ? '⏳ Guardando...' : '💾 Guardar Config PTZ' }}
+              </button>
+              @if (ptzConfigSavedMsg()) {
+                <span class="ptz-saved-badge">✅ {{ ptzConfigSavedMsg() }}</span>
+              }
+            </div>
           </div>
 
           <!-- D-PAD CONTROLLER -->
@@ -428,10 +441,12 @@
               <div></div>
               <button
                 class="dpad-btn up"
-                (mousedown)="startMove('up')"
+                (mousedown)="onDpadMouseDown($event, 'up')"
                 (mouseup)="stopHolding()"
-                (touchstart)="startMove('up')"
+                (mouseleave)="stopHolding()"
+                (touchstart)="onDpadTouchStart($event, 'up')"
                 (touchend)="stopHolding()"
+                (touchcancel)="stopHolding()"
                 title="Mover Arriba"
               >
                 ▲
@@ -440,10 +455,12 @@
 
               <button
                 class="dpad-btn left"
-                (mousedown)="startMove('left')"
+                (mousedown)="onDpadMouseDown($event, 'left')"
                 (mouseup)="stopHolding()"
-                (touchstart)="startMove('left')"
+                (mouseleave)="stopHolding()"
+                (touchstart)="onDpadTouchStart($event, 'left')"
                 (touchend)="stopHolding()"
+                (touchcancel)="stopHolding()"
                 title="Mover Izquierda"
               >
                 ◀
@@ -453,10 +470,12 @@
               </button>
               <button
                 class="dpad-btn right"
-                (mousedown)="startMove('right')"
+                (mousedown)="onDpadMouseDown($event, 'right')"
                 (mouseup)="stopHolding()"
-                (touchstart)="startMove('right')"
+                (mouseleave)="stopHolding()"
+                (touchstart)="onDpadTouchStart($event, 'right')"
                 (touchend)="stopHolding()"
+                (touchcancel)="stopHolding()"
                 title="Mover Derecha"
               >
                 ▶
@@ -465,10 +484,12 @@
               <div></div>
               <button
                 class="dpad-btn down"
-                (mousedown)="startMove('down')"
+                (mousedown)="onDpadMouseDown($event, 'down')"
                 (mouseup)="stopHolding()"
-                (touchstart)="startMove('down')"
+                (mouseleave)="stopHolding()"
+                (touchstart)="onDpadTouchStart($event, 'down')"
                 (touchend)="stopHolding()"
+                (touchcancel)="stopHolding()"
                 title="Mover Abajo"
               >
                 ▼
@@ -566,6 +587,57 @@
                   <span class="status-tag rec-alert pulse">🔴 Guardando clip...</span>
                 } @else {
                   <span class="status-tag standby">👁 En espera</span>
+                }
+              </div>
+            }
+          </div>
+
+          <!-- PTZ METRICS -->
+          <div class="ptz-metrics-box">
+            <div class="metrics-header">
+              <span>📊 Métrica PTZ</span>
+              <button class="btn-metrics-refresh" (click)="refreshPtzMetrics()" title="Actualizar métricas PTZ">🔄</button>
+            </div>
+            @if (nvr.ptzMetrics(); as pm) {
+              <div class="metrics-grid">
+                <div class="metric-cell">
+                  <span class="m-label">Latencia cámara</span>
+                  <span
+                    class="m-value"
+                    [class.m-fast]="pm.lastLatencyMs !== null && pm.lastLatencyMs <= 450"
+                    [class.m-warn]="pm.lastLatencyMs !== null && pm.lastLatencyMs > 450 && pm.lastLatencyMs <= 1200"
+                    [class.m-bad]="(pm.lastLatencyMs !== null && pm.lastLatencyMs > 1200) || pm.lastSuccess === false"
+                  >
+                    {{ pm.lastLatencyMs !== null ? pm.lastLatencyMs + ' ms' : '—' }}
+                  </span>
+                </div>
+                <div class="metric-cell">
+                  <span class="m-label">Prom. / RTT Web</span>
+                  <span class="m-value">
+                    {{ pm.avgLatencyMs !== null ? pm.avgLatencyMs + ' ms' : '—' }}
+                    @if (ptzClientRttMs() !== null) {
+                      / {{ ptzClientRttMs() }} ms
+                    }
+                  </span>
+                </div>
+                <div class="metric-cell">
+                  <span class="m-label">OK / Fallos</span>
+                  <span class="m-value">{{ pm.successCount }} / {{ pm.failCount }}</span>
+                </div>
+                <div class="metric-cell">
+                  <span class="m-label">Cola / Evitados</span>
+                  <span class="m-value">{{ pm.queueDepth }} / {{ pm.coalescedCount }}</span>
+                </div>
+              </div>
+              <div class="metrics-footer">
+                <span>
+                  Último: <strong>{{ pm.lastAction || 'ninguno' }}</strong>
+                  @if (ptzMoveInFlight()) {
+                    · ⏳ enviando...
+                  }
+                </span>
+                @if (pm.lastError) {
+                  <span class="m-error" [title]="pm.lastError">⚠️ {{ pm.lastError }}</span>
                 }
               </div>
             }

@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { addLog, getLogs } from './logger.js';
 import { requireAuth, verifyUserCredentials, createToken, AUTH_COOKIE_OPTS, } from './auth.js';
-import { PtzMoveSchema, PtzPresetSchema, executePtzMove, executePtzPreset, getPresetsList, } from './ptz.js';
+import { PtzMoveSchema, PtzPresetSchema, PtzConfigSchema, executePtzMove, executePtzPreset, getPresetsList, getPtzConfig, savePtzConfig, getPtzMetrics, } from './ptz.js';
 import { getAvailableDays, scanDateFolder, validateRecordingPath, generateThumbnail, exportClip, deleteSegment, deleteDay, ProtectedDayError, initRecordingsWatcher, DATE_REGEX, } from './recordings.js';
 import { getStorageStats, runRetentionCycle, initRetentionScheduler, } from './storage.js';
 import { checkSystemHealth, getLiveSnapshotBuffer, startRecorder, stopRecorder, updateCameraConfig, } from './system.js';
@@ -103,6 +103,21 @@ fastify.register(async (protectedRoutes) => {
     });
     protectedRoutes.get('/api/ptz/presets', async () => {
         return getPresetsList();
+    });
+    protectedRoutes.get('/api/ptz/config', async () => {
+        return getPtzConfig();
+    });
+    protectedRoutes.post('/api/ptz/config', async (req, reply) => {
+        const parse = PtzConfigSchema.safeParse(req.body);
+        if (!parse.success) {
+            return reply.status(400).send({ error: 'Invalid PTZ config', details: parse.error.format() });
+        }
+        const saved = savePtzConfig(parse.data);
+        addLog('info', `PTZ config saved: speed=${saved.speed}, continuous=${saved.continuous}`);
+        return { success: true, config: saved };
+    });
+    protectedRoutes.get('/api/ptz/metrics', async () => {
+        return getPtzMetrics();
     });
     // Snapshot
     protectedRoutes.get('/api/snapshot', async (req, reply) => {

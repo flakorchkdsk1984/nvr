@@ -4,6 +4,8 @@ import { Observable, tap, catchError, of } from 'rxjs';
 import {
   HealthStatus,
   PresetInfo,
+  PtzConfig,
+  PtzMetrics,
   DaySummary,
   SegmentInfo,
   StorageStats,
@@ -29,6 +31,23 @@ export class NvrService {
   health = signal<HealthStatus | null>(null);
   storage = signal<StorageStats | null>(null);
   presets = signal<PresetInfo[]>([]);
+  ptzConfig = signal<PtzConfig>({ speed: 5, continuous: false });
+  ptzMetrics = signal<PtzMetrics>({
+    lastLatencyMs: null,
+    avgLatencyMs: null,
+    minLatencyMs: null,
+    maxLatencyMs: null,
+    totalCommands: 0,
+    successCount: 0,
+    failCount: 0,
+    coalescedCount: 0,
+    queueDepth: 0,
+    inFlight: false,
+    lastAction: null,
+    lastSuccess: null,
+    lastError: null,
+    lastUpdatedAt: null,
+  });
   days = signal<DaySummary[]>([]);
   currentDate = signal<string>('');
   segments = signal<SegmentInfo[]>([]);
@@ -95,18 +114,45 @@ export class NvrService {
 
   // PTZ
   movePtz(action: string, step: number = 1, speed: number = 5): Observable<any> {
-    return this.http.post('/api/ptz/move', { action, step, speed });
+    return this.http.post<any>('/api/ptz/move', { action, step, speed }).pipe(
+      tap((res) => {
+        if (res?.metrics) this.ptzMetrics.set(res.metrics);
+      })
+    );
   }
 
   triggerPreset(action: 'goto' | 'set' | 'meta', number: number, name?: string, emoji?: string): Observable<any> {
-    return this.http.post('/api/ptz/preset', { action, number, name, emoji }).pipe(
-      tap(() => this.fetchPresets().subscribe())
+    return this.http.post<any>('/api/ptz/preset', { action, number, name, emoji }).pipe(
+      tap((res) => {
+        if (res?.metrics) this.ptzMetrics.set(res.metrics);
+        this.fetchPresets().subscribe();
+      })
     );
   }
 
   fetchPresets(): Observable<PresetInfo[]> {
     return this.http.get<PresetInfo[]>('/api/ptz/presets').pipe(
       tap((list) => this.presets.set(list))
+    );
+  }
+
+  fetchPtzConfig(): Observable<PtzConfig> {
+    return this.http.get<PtzConfig>('/api/ptz/config').pipe(
+      tap((cfg) => this.ptzConfig.set(cfg))
+    );
+  }
+
+  savePtzConfig(speed: number, continuous: boolean): Observable<{ success: boolean; config: PtzConfig }> {
+    return this.http.post<{ success: boolean; config: PtzConfig }>('/api/ptz/config', { speed, continuous }).pipe(
+      tap((res) => {
+        if (res?.config) this.ptzConfig.set(res.config);
+      })
+    );
+  }
+
+  fetchPtzMetrics(): Observable<PtzMetrics> {
+    return this.http.get<PtzMetrics>('/api/ptz/metrics').pipe(
+      tap((m) => this.ptzMetrics.set(m))
     );
   }
 
@@ -355,6 +401,8 @@ export class NvrService {
   refreshAll() {
     this.fetchHealth().subscribe();
     this.fetchPresets().subscribe();
+    this.fetchPtzConfig().subscribe();
+    this.fetchPtzMetrics().subscribe();
     this.fetchDays().subscribe();
     this.fetchStorage().subscribe();
     this.fetchLogs().subscribe();

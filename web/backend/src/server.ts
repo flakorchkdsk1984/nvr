@@ -23,9 +23,13 @@ import {
 import {
   PtzMoveSchema,
   PtzPresetSchema,
+  PtzConfigSchema,
   executePtzMove,
   executePtzPreset,
   getPresetsList,
+  getPtzConfig,
+  savePtzConfig,
+  getPtzMetrics,
 } from './ptz.js';
 import {
   getAvailableDays,
@@ -165,6 +169,24 @@ fastify.register(async (protectedRoutes) => {
 
   protectedRoutes.get('/api/ptz/presets', async () => {
     return getPresetsList();
+  });
+
+  protectedRoutes.get('/api/ptz/config', async () => {
+    return getPtzConfig();
+  });
+
+  protectedRoutes.post('/api/ptz/config', async (req, reply) => {
+    const parse = PtzConfigSchema.safeParse(req.body);
+    if (!parse.success) {
+      return reply.status(400).send({ error: 'Invalid PTZ config', details: parse.error.format() });
+    }
+    const saved = savePtzConfig(parse.data);
+    addLog('info', `PTZ config saved: speed=${saved.speed}, continuous=${saved.continuous}`);
+    return { success: true, config: saved };
+  });
+
+  protectedRoutes.get('/api/ptz/metrics', async () => {
+    return getPtzMetrics();
   });
 
   // Snapshot

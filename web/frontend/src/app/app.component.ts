@@ -97,6 +97,12 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   ptzContinuous = false;
   isHolding = false;
   holdInterval: any = null;
+  private activeHoldAction: string | null = null;
+  ptzMoveInFlight = signal<boolean>(false);
+  ptzClientRttMs = signal<number | null>(null);
+  ptzConfigSaving = signal<boolean>(false);
+  ptzConfigSavedMsg = signal<string>('');
+  private ptzConfigMsgTimer: any = null;
 
   // Digital Zoom & Pan state
   digitalZoom = signal<number>(1.0);
@@ -176,6 +182,15 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       if (storedSkin === 'cyberpunk' || storedSkin === 'default') {
         this.applyThemeSkin(storedSkin);
       }
+      const storedPtzSpeed = localStorage.getItem('nvr_ptz_speed');
+      if (storedPtzSpeed !== null) {
+        const s = parseInt(storedPtzSpeed, 10);
+        if (!isNaN(s) && s >= 1 && s <= 8) this.ptzSpeed = s;
+      }
+      const storedPtzCont = localStorage.getItem('nvr_ptz_continuous');
+      if (storedPtzCont !== null) {
+        this.ptzContinuous = storedPtzCont === 'true';
+      }
     } catch {}
 
     this.manualElapsedInterval = setInterval(() => {
@@ -194,6 +209,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       if (user) {
         this.nvr.refreshAll();
         this.loadConfig();
+        this.loadPtzConfigFromServer();
         this.startHealthPolling();
         this.cleanupMotionStream = this.nvr.initMotionLiveStream();
         setTimeout(() => this.initLivePlayer(), 150);
@@ -216,6 +232,10 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.manualSavedTimeout) {
       clearTimeout(this.manualSavedTimeout);
       this.manualSavedTimeout = null;
+    }
+    if (this.ptzConfigMsgTimer) {
+      clearTimeout(this.ptzConfigMsgTimer);
+      this.ptzConfigMsgTimer = null;
     }
     if (this.cleanupMotionStream) {
       this.cleanupMotionStream();
@@ -255,6 +275,7 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     this.nvr.login(this.loginUser, this.loginPass).subscribe({
       next: () => {
         this.loginPass = '';
+        this.loadPtzConfigFromServer();
         this.startHealthPolling();
         this.cleanupMotionStream = this.nvr.initMotionLiveStream();
         setTimeout(() => this.initLivePlayer(), 150);
@@ -705,35 +726,118 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // PTZ Control
-  startMove(action: string) {
-    const step = this.ptzContinuous ? 0 : 1;
-    this.nvr.movePtz(action, step, this.ptzSpeed).subscribe();
+  // PTZ Config & Control
+  loadPtzConfigFromServer() {
+    this.nvr.fetchPtzConfig().subscribe({
+      next: (cfg) => {
+        this.ptzSpeed = cfg.speed;
+        this.ptzContinuous = cfg.continuous;
+        try {
+          localStorage.setItem('nvr_ptz_speed', String(cfg.speed));
+          localStorage.setItem('nvr_ptz_continuous', String(cfg.continuous));
+        } catch {}
+      },
+      error: () => {},
+    });
+  }
 
+  savePtzConfig() {
+    if (this.ptzConfigSaving()) return;
+    this.ptzConfigSaving.set(true);
+    this.ptzConfigSavedMsg.set('');
+    const speed = Math.min(8, Math.max(1, Number(this.ptzSpeed) || 5));
+    const continuous = !!this.ptzContinuous;
+    this.ptzSpeed = speed;
+    this.ptzContinuous = continuous;
+
+    try {
+      localStorage.setItem('nvr_ptz_speed', String(speed));
+      localStorage.setItem('nvr_ptz_continuous', String(continuous));
+    } catch {}
+
+    this.nvr.savePtzConfig(speed, continuous).subscribe({
+      next: () => {
+        this.ptzConfigSaving.set(false);
+        this.ptzConfigSavedMsg.set('Guardado');
+        if (this.ptzConfigMsgTimer) clearTimeout(this.ptzConfigMsgTimer);
+        this.ptzConfigMsgTimer = setTimeout(() => this.ptzConfigSavedMsg.set(''), 3000);
+      },
+      error: (err) => {
+        console.warn('Error guardando config PTZ:', err);
+        this.ptzConfigSaving.set(false);
+      },
+    });
+  }
+
+  refreshPtzMetrics() {
+    this.nvr.fetchPtzMetrics().subscribe({ error: () => {} });
+  }
+
+  private sendPtzMoveCommand(action: string, step: number) {
+    const start = performance.now();
+    this.ptzMoveInFlight.set(true);
+    this.nvr.movePtz(action, step, this.ptzSpeed).subscribe({
+      next: () => {
+        this.ptzMoveInFlight.set(false);
+        this.ptzClientRttMs.set(Math.round(performance.now() - start));
+      },
+      error: () => {
+        this.ptzMoveInFlight.set(false);
+        this.ptzClientRttMs.set(Math.round(performance.now() - start));
+        this.nvr.fetchPtzMetrics().subscribe({ error: () => {} });
+      },
+    });
+  }
+
+  onDpadMouseDown(event: MouseEvent, action: string) {
+    if (event.button !== 0) return;
+    this.startMove(action);
+  }
+
+  onDpadTouchStart(event: TouchEvent, action: string) {
+    // Prevent synthetic mousedown from double-firing on touch screens
+    event.preventDefault();
+    this.startMove(action);
+  }
+
+  startMove(action: string) {
     if (this.ptzContinuous) {
+      if (this.activeHoldAction === action) return;
+      this.activeHoldAction = action;
       this.isHolding = true;
+      this.sendPtzMoveCommand(action, 0);
+
       clearInterval(this.holdInterval);
+      // Gentle keepalive only if no request is already running against camera CGI
       this.holdInterval = setInterval(() => {
-        if (this.isHolding) {
-          this.nvr.movePtz(action, 0, this.ptzSpeed).subscribe();
+        if (this.isHolding && this.activeHoldAction === action && !this.ptzMoveInFlight()) {
+          this.sendPtzMoveCommand(action, 0);
         }
-      }, 200);
+      }, 1400);
+    } else {
+      this.isHolding = false;
+      this.activeHoldAction = null;
+      this.sendPtzMoveCommand(action, 1);
     }
   }
 
   stopHolding() {
-    if (this.isHolding || this.ptzContinuous) {
-      this.isHolding = false;
-      clearInterval(this.holdInterval);
-      this.holdInterval = null;
-      this.nvr.movePtz('stop', 0, this.ptzSpeed).subscribe();
+    const wasHolding = this.isHolding || this.activeHoldAction !== null;
+    this.isHolding = false;
+    this.activeHoldAction = null;
+    clearInterval(this.holdInterval);
+    this.holdInterval = null;
+    if (wasHolding) {
+      this.sendPtzMoveCommand('stop', 0);
     }
   }
 
   sendPtzStop() {
     this.isHolding = false;
+    this.activeHoldAction = null;
     clearInterval(this.holdInterval);
-    this.nvr.movePtz('stop', 0, this.ptzSpeed).subscribe();
+    this.holdInterval = null;
+    this.sendPtzMoveCommand('stop', 0);
   }
 
   // Zoom Controls (Digital smooth scaling + Hardware CGI command)
@@ -896,23 +1000,23 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       switch (event.key) {
         case 'ArrowUp':
           event.preventDefault();
-          this.startMove('up');
+          if (!event.repeat) this.startMove('up');
           break;
         case 'ArrowDown':
           event.preventDefault();
-          this.startMove('down');
+          if (!event.repeat) this.startMove('down');
           break;
         case 'ArrowLeft':
           event.preventDefault();
-          this.startMove('left');
+          if (!event.repeat) this.startMove('left');
           break;
         case 'ArrowRight':
           event.preventDefault();
-          this.startMove('right');
+          if (!event.repeat) this.startMove('right');
           break;
         case ' ':
           event.preventDefault();
-          this.sendPtzStop();
+          if (!event.repeat) this.sendPtzStop();
           break;
       }
     } else if (this.activeTab() === 'recordings' && this.videoPlayerRef) {
@@ -937,6 +1041,19 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
           break;
       }
     }
+  }
+
+  @HostListener('window:keyup', ['$event'])
+  handleKeyUp(event: KeyboardEvent) {
+    if (this.activeTab() !== 'live') return;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+      this.stopHolding();
+    }
+  }
+
+  @HostListener('window:blur')
+  handleWindowBlur() {
+    this.stopHolding();
   }
 
   // Recordings Methods

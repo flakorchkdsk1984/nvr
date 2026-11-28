@@ -23,6 +23,29 @@ export interface PresetInfo {
   updatedAt?: string;
 }
 
+export interface PtzConfig {
+  speed: number;
+  continuous: boolean;
+  updatedAt?: string;
+}
+
+export interface PtzMetrics {
+  lastLatencyMs: number | null;
+  avgLatencyMs: number | null;
+  minLatencyMs: number | null;
+  maxLatencyMs: number | null;
+  totalCommands: number;
+  successCount: number;
+  failCount: number;
+  coalescedCount: number;
+  queueDepth: number;
+  inFlight: boolean;
+  lastAction: string | null;
+  lastSuccess: boolean | null;
+  lastError: string | null;
+  lastUpdatedAt: string | null;
+}
+
 export interface DaySummary {
   date: string;
   segmentCount: number;

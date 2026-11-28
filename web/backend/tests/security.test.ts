@@ -6,7 +6,15 @@ import {
   FILE_REGEX,
   DATE_REGEX,
 } from '../src/recordings.js';
-import { PtzMoveSchema, PtzPresetSchema, getPresetsList } from '../src/ptz.js';
+import {
+  PtzMoveSchema,
+  PtzPresetSchema,
+  PtzConfigSchema,
+  getPresetsList,
+  getPtzConfig,
+  savePtzConfig,
+  getPtzMetrics,
+} from '../src/ptz.js';
 
 describe('Security & Validation Tests', () => {
   it('should accept valid recording filenames', () => {
@@ -72,5 +80,23 @@ describe('Security & Validation Tests', () => {
     assert.strictEqual(invalidPresetSeven.success, false);
 
     assert.strictEqual(getPresetsList().length, 6);
+
+    const validCfg = PtzConfigSchema.safeParse({ speed: 7, continuous: true });
+    assert.strictEqual(validCfg.success, true);
+
+    const badCfg = PtzConfigSchema.safeParse({ speed: 12, continuous: true });
+    assert.strictEqual(badCfg.success, false);
+
+    const prevCfg = getPtzConfig();
+    const savedCfg = savePtzConfig({ speed: 7, continuous: true });
+    assert.strictEqual(savedCfg.speed, 7);
+    assert.strictEqual(savedCfg.continuous, true);
+    assert.strictEqual(getPtzConfig().speed, 7);
+    savePtzConfig({ speed: prevCfg.speed, continuous: prevCfg.continuous });
+
+    const metrics = getPtzMetrics();
+    assert.strictEqual(typeof metrics.totalCommands, 'number');
+    assert.strictEqual(typeof metrics.coalescedCount, 'number');
+    assert.strictEqual(metrics.queueDepth, 0);
   });
 });
