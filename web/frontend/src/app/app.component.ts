@@ -119,8 +119,8 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('videoPlayer') videoPlayerRef!: ElementRef<HTMLVideoElement>;
 
   // Timeline & Event Mini-Player State
-  timelineViewMode = signal<'timeline' | 'cards'>('timeline');
-  timelineSort = signal<'asc' | 'desc'>('asc'); // Ascending default per requirements
+  timelineViewMode = signal<'timeline' | 'cards'>('cards');
+  timelineSort = signal<'asc' | 'desc'>('desc');
   timelineDateFilter = signal<string>('');
   timelineSearchFilter = signal<string>('');
   timelinePage = signal<number>(1);

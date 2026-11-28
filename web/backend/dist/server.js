@@ -19,7 +19,7 @@ import { getStorageStats, runRetentionCycle, initRetentionScheduler, } from './s
 import { checkSystemHealth, getLiveSnapshotBuffer, startRecorder, stopRecorder, updateCameraConfig, } from './system.js';
 import { getLightState } from './light.js';
 import { getDayNightState, startDayNightPoller, dayNightEvents, } from './daynight.js';
-import { getEvents, getEventSnapshot, getEventRecording, getTimelineEvents, } from './events.js';
+import { getEvents, getEventSnapshot, getEventRecording, getTimelineEvents, closeOrphanedEvents, } from './events.js';
 import { getMotionEngine, startMotionEngine } from './motion.js';
 import { getRecorderManager, initRecorderManager } from './recorder-manager.js';
 export const fastify = Fastify({
@@ -451,6 +451,7 @@ else {
 // 4. START SERVER
 // ==========================================
 export async function startServer() {
+    closeOrphanedEvents();
     initRecordingsWatcher();
     initRetentionScheduler();
     startMotionEngine();

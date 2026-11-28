@@ -38,7 +38,7 @@ export class NvrService {
   recorderStatus = signal<RecorderStatus>({ mode: 'continuous', active: false, isRecordingMotion: false, prerollBufferCount: 0 });
   events = signal<MotionEvent[]>([]);
   timelineItems = signal<TimelineItem[]>([]);
-  timelinePagination = signal<TimelinePagination>({ page: 1, limit: 20, totalItems: 0, totalPages: 1, sort: 'asc' });
+  timelinePagination = signal<TimelinePagination>({ page: 1, limit: 20, totalItems: 0, totalPages: 1, sort: 'desc' });
   timelineLoading = signal<boolean>(false);
   motionActive = signal<boolean>(false);
   motionScore = signal<number>(0);
@@ -277,6 +277,15 @@ export class NvrService {
           this.motionActive.set(true);
           this.motionScore.set(msg.event.score || 0);
           this.events.update((list) => [msg.event, ...list.filter(e => e.id !== msg.event.id)]);
+          const pag = this.timelinePagination();
+          if (pag.page === 1 && pag.sort === 'desc') {
+            const newItem: TimelineItem = {
+              ...msg.event,
+              camera: 'C2L-Y-A (HD)',
+              recording: { hasRecording: false, camera: 'C2L-Y-A (HD)' },
+            };
+            this.timelineItems.update((list) => [newItem, ...list.filter(e => e.id !== msg.event.id)].slice(0, pag.limit));
+          }
         } else if (msg.type === 'motion_active') {
           this.motionActive.set(true);
           if (msg.data?.score !== undefined) {
@@ -287,6 +296,9 @@ export class NvrService {
           this.motionScore.set(0);
           this.events.update((list) =>
             list.map((e) => (e.id === msg.event.id ? msg.event : e))
+          );
+          this.timelineItems.update((list) =>
+            list.map((item) => (item.id === msg.event.id ? { ...item, ...msg.event } : item))
           );
         }
       } catch {}

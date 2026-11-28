@@ -61,6 +61,7 @@ import {
   getEventSnapshot,
   getEventRecording,
   getTimelineEvents,
+  closeOrphanedEvents,
 } from './events.js';
 import { getMotionEngine, startMotionEngine, stopMotionEngine } from './motion.js';
 import { getRecorderManager, initRecorderManager, RecordingMode } from './recorder-manager.js';
@@ -552,6 +553,7 @@ if (fs.existsSync(frontendDist)) {
 // ==========================================
 
 export async function startServer() {
+  closeOrphanedEvents();
   initRecordingsWatcher();
   initRetentionScheduler();
   startMotionEngine();

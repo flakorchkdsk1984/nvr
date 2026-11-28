@@ -116,6 +116,27 @@ export function getEventById(id) {
     const row = stmt.get(id);
     return row || null;
 }
+export function closeOrphanedEvents() {
+    try {
+        const db = getDb();
+        const stmt = db.prepare(`
+      UPDATE motion_events
+      SET end_time = start_time,
+          duration_s = 0
+      WHERE end_time IS NULL
+    `);
+        const res = stmt.run();
+        const closed = Number(res.changes);
+        if (closed > 0) {
+            addLog('info', `Se cerraron ${closed} evento(s) huérfano(s) abiertos antes del reinicio del servidor.`);
+        }
+        return closed;
+    }
+    catch (err) {
+        addLog('warn', `No se pudieron cerrar eventos huérfanos: ${err.message}`);
+        return 0;
+    }
+}
 export function getEventSnapshot(id) {
     const event = getEventById(id);
     if (!event || !event.snapshot_path)
