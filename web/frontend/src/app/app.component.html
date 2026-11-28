@@ -146,11 +146,15 @@
   </main>
 } @else {
   <!-- MAIN APPLICATION CONTENT -->
-  <main class="app-main">
+  <main class="app-main" [class.compact-ui]="compactControls()">
 
     <!-- 1. LIVE VIEW & PTZ -->
     @if (activeTab() === 'live') {
-      <div class="live-grid">
+      <div
+        class="live-grid"
+        [class.full-image-layout]="imageRatio() >= 100"
+        [style.--live-grid-cols]="getLiveGridColumns()"
+      >
         <div class="live-left-column">
           <!-- Video Stream Player -->
           <section class="video-container" #playerBox>
@@ -274,11 +278,62 @@
               <button class="btn-action" (click)="downloadSnapshot()" title="Capturar imagen actual">
                 📸 Snapshot
               </button>
+              <button
+                class="btn-action layout-toggle-btn"
+                [class.active]="showLayoutBar()"
+                (click)="toggleLayoutBar()"
+                title="Configurar proporción entre imagen y controles"
+              >
+                📐 {{ imageRatio() }}%
+              </button>
               <button class="btn-action" (click)="toggleFullscreen(playerBox)" title="Pantalla completa">
                 ⛶ Pantalla Completa
               </button>
             </div>
           </div>
+
+          <!-- Proportion / Layout Configuration Bar -->
+          @if (showLayoutBar()) {
+            <div class="layout-config-bar">
+              <div class="layout-bar-group">
+                <span class="layout-lbl">📐 Proporción Imagen:</span>
+                <button class="ratio-chip" [class.active]="imageRatio() === 70" (click)="setImageRatio(70)">70%</button>
+                <button class="ratio-chip" [class.active]="imageRatio() === 82" (click)="setImageRatio(82)">82%</button>
+                <button class="ratio-chip" [class.active]="imageRatio() === 88" (click)="setImageRatio(88)">88%</button>
+                <button class="ratio-chip" [class.active]="imageRatio() === 100" (click)="setImageRatio(100)" title="Video 100% ancho y botones abajo">100%</button>
+              </div>
+              <div class="layout-bar-group">
+                <input
+                  type="range"
+                  class="ratio-slider"
+                  min="65"
+                  max="90"
+                  [value]="imageRatio() === 100 ? 90 : imageRatio()"
+                  (input)="onImageRatioInput($event)"
+                  title="Ajustar proporción exacta de la imagen (65% a 90%)"
+                />
+                <span class="ratio-val">{{ imageRatio() }}% / {{ 100 - imageRatio() }}%</span>
+              </div>
+              <div class="layout-bar-group">
+                <button
+                  class="ratio-chip"
+                  [class.active]="compactControls()"
+                  (click)="toggleCompactControls()"
+                  title="Reducir tamaño de botones y barras para priorizar la imagen"
+                >
+                  {{ compactControls() ? '🔽 Botones Compactos' : '🔼 Botones Normales' }}
+                </button>
+                <button
+                  class="ratio-chip"
+                  [class.active]="videoFitMode() === 'cover'"
+                  (click)="toggleVideoFitMode()"
+                  title="Alternar entre ajustar cuadro completo o llenar marco"
+                >
+                  {{ videoFitMode() === 'cover' ? '🖼️ Llenar' : '🖼️ Ajustar' }}
+                </button>
+              </div>
+            </div>
+          }
 
           <!-- Native Live Player with Digital Zoom & Drag-to-Pan -->
           <div
@@ -301,6 +356,7 @@
                 [src]="snapshotLoopUrl()"
                 class="live-snapshot-img"
                 alt="Stream en vivo Snapshot"
+                [style.object-fit]="videoFitMode()"
                 [style.transform]="'scale(' + digitalZoom() + ') translate(' + (zoomPanX() / digitalZoom()) + 'px, ' + (zoomPanY() / digitalZoom()) + 'px)'"
                 [style.transition]="isPanning ? 'none' : 'transform 0.15s ease-out'"
               />
@@ -312,6 +368,7 @@
                 playsinline
                 controls
                 class="live-video-element"
+                [style.object-fit]="videoFitMode()"
                 [style.transform]="'scale(' + digitalZoom() + ') translate(' + (zoomPanX() / digitalZoom()) + 'px, ' + (zoomPanY() / digitalZoom()) + 'px)'"
                 [style.transition]="isPanning ? 'none' : 'transform 0.15s ease-out'"
               ></video>
@@ -397,7 +454,16 @@
         <!-- PTZ Controller Panel -->
         <aside class="ptz-panel">
           <div class="panel-header">
-            <h3>🎮 Control PTZ</h3>
+            <div class="panel-header-top">
+              <h3>🎮 Control PTZ</h3>
+              <button
+                class="btn-mini-layout"
+                (click)="toggleLayoutBar()"
+                [title]="'Proporción actual: ' + imageRatio() + '% imagen. Clic para ajustar'"
+              >
+                📐 {{ imageRatio() }}%
+              </button>
+            </div>
             <span class="subtext">Usa el D-pad o las teclas de flechas (↑ ↓ ← →)</span>
           </div>
 

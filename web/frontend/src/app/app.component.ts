@@ -73,6 +73,12 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     typeof localStorage !== 'undefined' && localStorage.getItem('nvr_show_overlay_indicators') === 'true'
   );
 
+  // Screen proportion (image vs controls) & compact UI preferences
+  imageRatio = signal<number>(82);
+  compactControls = signal<boolean>(true);
+  videoFitMode = signal<'contain' | 'cover'>('contain');
+  showLayoutBar = signal<boolean>(false);
+
   @ViewChild('liveVideo') liveVideoRef?: ElementRef<HTMLVideoElement>;
   private liveWs?: WebSocket;
   private mediaSource?: MediaSource;
@@ -190,6 +196,21 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
       const storedPtzCont = localStorage.getItem('nvr_ptz_continuous');
       if (storedPtzCont !== null) {
         this.ptzContinuous = storedPtzCont === 'true';
+      }
+      const storedRatio = localStorage.getItem('nvr_image_ratio');
+      if (storedRatio !== null) {
+        const r = parseInt(storedRatio, 10);
+        if (r === 100 || (!isNaN(r) && r >= 65 && r <= 90)) {
+          this.imageRatio.set(r);
+        }
+      }
+      const storedCompact = localStorage.getItem('nvr_compact_controls');
+      if (storedCompact !== null) {
+        this.compactControls.set(storedCompact === 'true');
+      }
+      const storedFit = localStorage.getItem('nvr_video_fit');
+      if (storedFit === 'contain' || storedFit === 'cover') {
+        this.videoFitMode.set(storedFit);
       }
     } catch {}
 
@@ -366,6 +387,48 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
     try {
       localStorage.setItem('nvr_show_overlay_indicators', String(next));
     } catch {}
+  }
+
+  // Screen proportion & UI compactness controls
+  toggleLayoutBar() {
+    this.showLayoutBar.update((v) => !v);
+  }
+
+  setImageRatio(ratio: number) {
+    const clamped = ratio >= 95 ? 100 : Math.min(90, Math.max(65, Math.round(ratio)));
+    this.imageRatio.set(clamped);
+    try {
+      localStorage.setItem('nvr_image_ratio', String(clamped));
+    } catch {}
+  }
+
+  onImageRatioInput(event: Event) {
+    const val = parseInt((event.target as HTMLInputElement).value, 10);
+    if (!isNaN(val)) {
+      this.setImageRatio(val);
+    }
+  }
+
+  toggleCompactControls() {
+    const next = !this.compactControls();
+    this.compactControls.set(next);
+    try {
+      localStorage.setItem('nvr_compact_controls', String(next));
+    } catch {}
+  }
+
+  toggleVideoFitMode() {
+    const next = this.videoFitMode() === 'cover' ? 'contain' : 'cover';
+    this.videoFitMode.set(next);
+    try {
+      localStorage.setItem('nvr_video_fit', next);
+    } catch {}
+  }
+
+  getLiveGridColumns(): string {
+    const ratio = this.imageRatio();
+    if (ratio >= 100) return 'minmax(0, 1fr)';
+    return `minmax(0, ${ratio}fr) minmax(210px, ${100 - ratio}fr)`;
   }
 
   // Light Control (Deprecated/Inferred)
