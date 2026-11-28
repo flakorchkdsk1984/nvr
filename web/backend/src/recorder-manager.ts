@@ -27,11 +27,13 @@ class RecorderManager {
   private activeMotionFile: string | null = null;
   private activeMotionTarget: string | null = null;
   private prerollSnapshotFiles: string[] = [];
+  private lockedFiles = new Set<string>();
   private postrollTimer: NodeJS.Timeout | null = null;
   private isMotionActive = false;
   private isRecordingMotion = false;
   private prerollCleanupInterval: NodeJS.Timeout | null = null;
   private dateDirInterval: NodeJS.Timeout | null = null;
+  private lastStderrLogAt = new Map<string, number>();
   private initialized = false;
 
   constructor() {
@@ -66,21 +68,38 @@ class RecorderManager {
     }
   }
 
+  /**
+   * Drains stdout/stderr pipes continuously so FFmpeg never deadlocks on a full 64KB kernel pipe buffer,
+   * while throttling error logging to avoid log flooding.
+   */
+  private attachPipeDrain(proc: ChildProcess, label: string): void {
+    proc.stdout?.on('data', () => {});
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      const msg = chunk.toString('utf8').trim();
+      if (!msg) return;
+      // Ignore noisy non-fatal packet timestamp notice; log real errors throttled every 30s
+      if (msg.includes('Timestamps are unset in a packet')) return;
+      const now = Date.now();
+      const prev = this.lastStderrLogAt.get(label) || 0;
+      if (now - prev > 30000) {
+        this.lastStderrLogAt.set(label, now);
+        addLog('warn', `FFmpeg [${label}]: ${msg.slice(0, 220)}`);
+      }
+    });
+  }
+
   public init(): void {
     if (this.initialized) return;
     this.initialized = true;
 
-    // Ensure directories
     const prerollDir = path.join(config.DATA_DIR, 'preroll');
     if (!fs.existsSync(prerollDir)) fs.mkdirSync(prerollDir, { recursive: true });
 
-    // Hook up motion events
     const motionEngine = getMotionEngine();
     motionEngine.on('motion-start', () => this.handleMotionStart());
     motionEngine.on('motion-active', () => this.handleMotionActive());
     motionEngine.on('motion-end', () => this.handleMotionEnd());
 
-    // Start in current mode
     this.applyMode(this.mode);
   }
 
@@ -89,7 +108,7 @@ class RecorderManager {
     let prerollCount = 0;
     try {
       if (fs.existsSync(prerollDir)) {
-        prerollCount = fs.readdirSync(prerollDir).filter(f => f.endsWith('.mp4')).length;
+        prerollCount = fs.readdirSync(prerollDir).filter(f => f.startsWith('pre_') && (f.endsWith('.ts') || f.endsWith('.mp4'))).length;
       }
     } catch {}
 
@@ -193,7 +212,7 @@ class RecorderManager {
     if (this.dateDirInterval) clearInterval(this.dateDirInterval);
     this.dateDirInterval = setInterval(() => {
       this.ensureDateDirectories(recDir);
-    }, 30 * 60 * 1000);
+    }, 10 * 60 * 1000);
 
     const args = [
       '-hide_banner', '-loglevel', 'warning',
@@ -202,6 +221,7 @@ class RecorderManager {
       '-i', rtspUrl,
       '-c', 'copy',
       '-avoid_negative_ts', 'make_zero',
+      '-video_track_timescale', '90000',
       '-f', 'segment',
       '-segment_time', String(segmentLen),
       '-segment_format', 'mp4',
@@ -212,16 +232,20 @@ class RecorderManager {
     ];
 
     try {
-      this.continuousProcess = spawn(config.FFMPEG_PATH, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
+      const proc = spawn(config.FFMPEG_PATH, args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
       });
+      this.continuousProcess = proc;
+      this.attachPipeDrain(proc, 'continuous');
 
-      this.continuousProcess.on('exit', (code) => {
-        this.continuousProcess = null;
+      proc.on('exit', (code) => {
+        if (this.continuousProcess === proc) {
+          this.continuousProcess = null;
+        }
         if (this.mode === 'continuous') {
           addLog('warn', `Proceso FFmpeg continuo finalizó (${code}). Reiniciando en 3s...`);
           setTimeout(() => {
-            if (this.mode === 'continuous') this.startContinuous();
+            if (this.mode === 'continuous' && !this.continuousProcess) this.startContinuous();
           }, 3000);
         }
       });
@@ -231,7 +255,7 @@ class RecorderManager {
   }
 
   // ==========================================
-  // MOTION-ONLY MODE WITH PRE-ROLL BUFFER
+  // MOTION-ONLY MODE WITH MPEG-TS PRE-ROLL BUFFER
   // ==========================================
   private startMotionMode(): void {
     addLog('info', 'Modo de grabación "Solo Movimiento" activado con buffer pre-roll');
@@ -249,33 +273,35 @@ class RecorderManager {
     if (!fs.existsSync(prerollDir)) fs.mkdirSync(prerollDir, { recursive: true });
 
     const rtspUrl = `${config.GO2RTC_RTSP}/c2l_hd`;
-    // 3-second finalized MP4 segments for pre-roll
+    // 3-second MPEG-TS segments for pre-roll: fixed 90kHz PTS, no trailer needed on split
     const args = [
       '-hide_banner', '-loglevel', 'warning',
       '-rtsp_transport', 'tcp',
       '-fflags', '+genpts',
       '-i', rtspUrl,
       '-c', 'copy',
-      '-avoid_negative_ts', 'make_zero',
       '-f', 'segment',
       '-segment_time', '3',
-      '-segment_format', 'mp4',
-      '-segment_format_options', 'movflags=+faststart',
+      '-segment_format', 'mpegts',
       '-reset_timestamps', '1',
       '-strftime', '1',
-      path.join(prerollDir, 'pre_%Y%m%d_%H%M%S.mp4'),
+      path.join(prerollDir, 'pre_%Y%m%d_%H%M%S.ts'),
     ];
 
     try {
-      this.prerollProcess = spawn(config.FFMPEG_PATH, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
+      const proc = spawn(config.FFMPEG_PATH, args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
       });
+      this.prerollProcess = proc;
+      this.attachPipeDrain(proc, 'preroll');
 
-      this.prerollProcess.on('exit', (code) => {
-        this.prerollProcess = null;
+      proc.on('exit', () => {
+        if (this.prerollProcess === proc) {
+          this.prerollProcess = null;
+        }
         if (this.mode === 'motion') {
           setTimeout(() => {
-            if (this.mode === 'motion') this.startPrerollBuffer();
+            if (this.mode === 'motion' && !this.prerollProcess) this.startPrerollBuffer();
           }, 2000);
         }
       });
@@ -291,7 +317,7 @@ class RecorderManager {
 
       const now = Date.now();
       const files = fs.readdirSync(prerollDir)
-        .filter(f => (f.startsWith('pre_') || f.startsWith('active_')) && f.endsWith('.mp4'))
+        .filter(f => (f.startsWith('pre_') || f.startsWith('active_')) && (f.endsWith('.ts') || f.endsWith('.mp4')))
         .map(f => {
           const fullPath = path.join(prerollDir, f);
           try {
@@ -308,33 +334,34 @@ class RecorderManager {
         })
         .filter((f): f is { name: string; fullPath: string; size: number; mtime: number } => f !== null);
 
-      // Purge stale or corrupted files
       for (const file of files) {
-        const isSnapshotLocked = this.prerollSnapshotFiles.includes(file.fullPath);
-        const isActiveLiveLocked = this.activeMotionFile === file.fullPath;
-        if (isSnapshotLocked || isActiveLiveLocked) continue;
+        if (
+          this.lockedFiles.has(file.fullPath) ||
+          this.prerollSnapshotFiles.includes(file.fullPath) ||
+          this.activeMotionFile === file.fullPath
+        ) {
+          continue;
+        }
 
-        // Delete any file older than 45 seconds (camera GOP is ~15s) or empty/corrupt after 6s
+        const isLegacyMp4 = file.name.endsWith('.mp4');
         const isStale = (now - file.mtime) > 45000;
         const isCorrupt = file.size < 1000 && (now - file.mtime) > 6000;
-        if (isStale || isCorrupt) {
+        if (isLegacyMp4 || isStale || isCorrupt) {
           try { fs.unlinkSync(file.fullPath); } catch {}
         }
       }
 
-      // Keep only the most recent N pre-roll segments
       const validPreFiles = files
-        .filter(f => f.name.startsWith('pre_') && f.size >= 1000 && (now - f.mtime) <= 45000)
+        .filter(f => f.name.startsWith('pre_') && f.name.endsWith('.ts') && f.size >= 1000 && (now - f.mtime) <= 45000)
         .sort((a, b) => b.mtime - a.mtime);
 
       const maxKeep = Math.ceil(config.PREROLL_S / 3) + 1;
       if (validPreFiles.length > maxKeep) {
         for (let i = maxKeep; i < validPreFiles.length; i++) {
-          try {
-            if (!this.prerollSnapshotFiles.includes(validPreFiles[i].fullPath)) {
-              fs.unlinkSync(validPreFiles[i].fullPath);
-            }
-          } catch {}
+          const p = validPreFiles[i].fullPath;
+          if (!this.lockedFiles.has(p) && !this.prerollSnapshotFiles.includes(p)) {
+            try { fs.unlinkSync(p); } catch {}
+          }
         }
       }
     } catch {}
@@ -388,13 +415,13 @@ class RecorderManager {
     const targetFile = path.join(dateDir, `c2l_${timestampStr}.mp4`);
     this.activeMotionTarget = targetFile;
 
-    // Snapshot finalized pre-roll files (strictly 3.2s..30s old so the actively written segment is excluded)
+    // Snapshot finalized pre-roll MPEG-TS files (exclude newest open file modified within 2.5s)
     const prerollDir = path.join(config.DATA_DIR, 'preroll');
     let preFiles: string[] = [];
     try {
       const nowMs = Date.now();
       preFiles = fs.readdirSync(prerollDir)
-        .filter(f => f.startsWith('pre_') && f.endsWith('.mp4'))
+        .filter(f => f.startsWith('pre_') && f.endsWith('.ts'))
         .map(f => {
           const full = path.join(prerollDir, f);
           try {
@@ -410,7 +437,6 @@ class RecorderManager {
         .sort((a, b) => a.mtime - b.mtime)
         .map(f => f.full);
 
-      // Take the last N finalized segments
       const maxPre = Math.ceil(config.PREROLL_S / 3);
       if (preFiles.length > maxPre) {
         preFiles = preFiles.slice(preFiles.length - maxPre);
@@ -418,8 +444,8 @@ class RecorderManager {
     } catch {}
     this.prerollSnapshotFiles = [...preFiles];
 
-    // Live segment to capture
-    const tempLiveFile = path.join(prerollDir, `active_${timestampStr}.mp4`);
+    // Live segment captured as MPEG-TS so packets flush immediately without buffered moov
+    const tempLiveFile = path.join(prerollDir, `active_${timestampStr}.ts`);
     this.activeMotionFile = tempLiveFile;
 
     const rtspUrl = `${config.GO2RTC_RTSP}/c2l_hd`;
@@ -429,24 +455,93 @@ class RecorderManager {
       '-fflags', '+genpts',
       '-i', rtspUrl,
       '-c', 'copy',
-      '-avoid_negative_ts', 'make_zero',
-      '-movflags', '+faststart',
+      '-f', 'mpegts',
       tempLiveFile,
     ];
 
     addLog('info', `Iniciando captura de segmento por movimiento: ${path.basename(targetFile)} (preroll: ${preFiles.length} clips)`);
 
     try {
-      this.motionRecordProcess = spawn(config.FFMPEG_PATH, args, {
-        stdio: ['ignore', 'pipe', 'pipe'],
+      const proc = spawn(config.FFMPEG_PATH, args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
       });
+      this.motionRecordProcess = proc;
+      this.attachPipeDrain(proc, 'motion-record');
 
-      this.motionRecordProcess.on('exit', () => {
-        this.motionRecordProcess = null;
+      proc.on('exit', () => {
+        if (this.motionRecordProcess === proc) {
+          this.motionRecordProcess = null;
+        }
       });
     } catch (err: any) {
       addLog('error', `Error al iniciar captura de movimiento: ${err.message}`);
     }
+  }
+
+  private async remuxTsToMp4(inputFiles: string[], targetFile: string): Promise<void> {
+    const targetDir = path.dirname(targetFile);
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+    // Write temporary MP4 inside targetDir so final renameSync is guaranteed same-filesystem (never EXDEV)
+    const tempOutMp4 = `${targetFile}.tmp.mp4`;
+
+    let ffmpegArgs: string[];
+    let listFile: string | null = null;
+
+    if (inputFiles.length === 1) {
+      ffmpegArgs = [
+        '-hide_banner', '-loglevel', 'warning',
+        '-fflags', '+genpts',
+        '-i', inputFiles[0],
+        '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
+        '-video_track_timescale', '90000',
+        '-movflags', '+faststart',
+        '-y',
+        tempOutMp4,
+      ];
+    } else {
+      listFile = path.join(config.DATA_DIR, 'preroll', `concat_${Date.now()}_${Math.floor(Math.random() * 1000)}.txt`);
+      fs.writeFileSync(listFile, inputFiles.map(f => `file '${f}'`).join('\n'), 'utf8');
+      ffmpegArgs = [
+        '-hide_banner', '-loglevel', 'warning',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', listFile,
+        '-c', 'copy',
+        '-avoid_negative_ts', 'make_zero',
+        '-fflags', '+genpts',
+        '-video_track_timescale', '90000',
+        '-movflags', '+faststart',
+        '-y',
+        tempOutMp4,
+      ];
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const remuxProc = spawn(config.FFMPEG_PATH, ffmpegArgs, {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      let errBuf = '';
+      remuxProc.stderr?.on('data', (d: Buffer) => {
+        errBuf += d.toString('utf8');
+      });
+
+      remuxProc.on('exit', (code) => {
+        if (listFile) try { fs.unlinkSync(listFile); } catch {}
+        if (code === 0 && fs.existsSync(tempOutMp4) && fs.statSync(tempOutMp4).size > 1000) {
+          fs.renameSync(tempOutMp4, targetFile);
+          resolve();
+        } else {
+          if (fs.existsSync(tempOutMp4)) try { fs.unlinkSync(tempOutMp4); } catch {}
+          reject(new Error(`Remux exited with code ${code}: ${errBuf.slice(0, 180)}`));
+        }
+      });
+      remuxProc.on('error', (err) => {
+        if (listFile) try { fs.unlinkSync(listFile); } catch {}
+        if (fs.existsSync(tempOutMp4)) try { fs.unlinkSync(tempOutMp4); } catch {}
+        reject(err);
+      });
+    });
   }
 
   private async finalizeMotionRecording(): Promise<void> {
@@ -454,55 +549,62 @@ class RecorderManager {
     this.postrollTimer = null;
     this.isRecordingMotion = false;
 
+    // Snapshot references and clear instance fields immediately so overlapping events never collide
     const liveFile = this.activeMotionFile;
     const targetFile = this.activeMotionTarget;
     const preFiles = [...this.prerollSnapshotFiles];
-
     const proc = this.motionRecordProcess;
+
+    this.activeMotionFile = null;
+    this.activeMotionTarget = null;
+    this.prerollSnapshotFiles = [];
     this.motionRecordProcess = null;
 
-    if (proc) {
-      await new Promise<void>((resolve) => {
-        let done = false;
-        const finish = () => {
-          if (done) return;
-          done = true;
-          resolve();
-        };
-        const safetyTimeout = setTimeout(() => {
-          try { proc.kill('SIGKILL'); } catch {}
-          finish();
-        }, 8000);
-
-        proc.once('exit', () => {
-          clearTimeout(safetyTimeout);
-          finish();
-        });
-
-        try {
-          proc.kill('SIGINT');
-        } catch {
-          clearTimeout(safetyTimeout);
-          finish();
-        }
-      });
-    } else {
-      await new Promise((r) => setTimeout(r, 500));
-    }
-
-    if (!targetFile) return;
+    const lockedPaths = [...preFiles, ...(liveFile ? [liveFile] : [])];
+    for (const p of lockedPaths) this.lockedFiles.add(p);
 
     try {
+      if (proc) {
+        await new Promise<void>((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            resolve();
+          };
+          const safetyTimeout = setTimeout(() => {
+            try { proc.kill('SIGKILL'); } catch {}
+            finish();
+          }, 5000);
+
+          proc.once('exit', () => {
+            clearTimeout(safetyTimeout);
+            finish();
+          });
+
+          try {
+            proc.kill('SIGINT');
+          } catch {
+            clearTimeout(safetyTimeout);
+            finish();
+          }
+        });
+      } else {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      if (!targetFile) return;
+
       const now = Date.now();
       const validPre = preFiles.filter(f => {
         try {
           const stat = fs.statSync(f);
-          return stat.size >= 1000 && (now - stat.mtimeMs) < 60000;
+          return stat.size >= 1000 && (now - stat.mtimeMs) < 90000;
         } catch {
           return false;
         }
       });
-      const hasLive = liveFile && fs.existsSync(liveFile) && fs.statSync(liveFile).size >= 1000;
+      const hasLive = !!(liveFile && fs.existsSync(liveFile) && fs.statSync(liveFile).size >= 1000);
 
       if (!hasLive && validPre.length === 0) {
         addLog('warn', 'No se generaron datos para el clip de movimiento');
@@ -510,67 +612,28 @@ class RecorderManager {
       }
 
       const allValid = [...validPre, ...(hasLive && liveFile ? [liveFile] : [])];
-      if (allValid.length === 1) {
-        // Just move the single valid file directly
-        const single = allValid[0];
-        fs.renameSync(single, targetFile);
-      } else if (hasLive && liveFile && validPre.length > 0) {
-        // Concat files using ffmpeg concat demuxer with timestamp regeneration
-        const allFiles = [...validPre, liveFile];
-        const listFile = path.join(config.DATA_DIR, 'preroll', `concat_${Date.now()}.txt`);
-        const content = allFiles.map(f => `file '${f}'`).join('\n');
-        fs.writeFileSync(listFile, content, 'utf8');
-
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const concatProc = spawn(config.FFMPEG_PATH, [
-              '-hide_banner', '-loglevel', 'warning',
-              '-f', 'concat',
-              '-safe', '0',
-              '-i', listFile,
-              '-c', 'copy',
-              '-avoid_negative_ts', 'make_zero',
-              '-fflags', '+genpts',
-              '-movflags', '+faststart',
-              '-y',
-              targetFile,
-            ]);
-
-            concatProc.on('exit', (code) => {
-              try { fs.unlinkSync(listFile); } catch {}
-              if (code === 0) resolve();
-              else reject(new Error(`Concat exited with code ${code}`));
-            });
-            concatProc.on('error', (err) => {
-              try { fs.unlinkSync(listFile); } catch {}
-              reject(err);
-            });
-          });
-        } catch (concatErr: any) {
-          addLog('warn', `Concat de pre-roll falló (${concatErr.message}); usando archivo principal en vivo`);
-          if (fs.existsSync(liveFile)) {
-            fs.renameSync(liveFile, targetFile);
-          }
+      try {
+        await this.remuxTsToMp4(allValid, targetFile);
+      } catch (concatErr: any) {
+        if (hasLive && liveFile && validPre.length > 0) {
+          addLog('warn', `Concat de pre-roll falló (${concatErr.message}); remuxando solo captura en vivo`);
+          await this.remuxTsToMp4([liveFile], targetFile);
+        } else {
+          throw concatErr;
         }
-      } else if (hasLive && liveFile) {
-        fs.renameSync(liveFile, targetFile);
-      }
-
-      // Cleanup temp live file if still present
-      if (liveFile && fs.existsSync(liveFile)) {
-        try { fs.unlinkSync(liveFile); } catch {}
       }
 
       if (fs.existsSync(targetFile)) {
         const stat = fs.statSync(targetFile);
-        addLog('info', `Clip de movimiento guardado: ${path.basename(targetFile)} (${Math.round(stat.size / 1024 / 1024 * 10) / 10} MB)`);
+        addLog('info', `Clip de movimiento guardado: ${path.basename(targetFile)} (${(stat.size / 1024 / 1024).toFixed(2)} MB)`);
       }
     } catch (err: any) {
       addLog('error', `Error finalizando grabación de movimiento: ${err.message}`);
     } finally {
-      this.activeMotionFile = null;
-      this.activeMotionTarget = null;
-      this.prerollSnapshotFiles = [];
+      if (liveFile && fs.existsSync(liveFile)) {
+        try { fs.unlinkSync(liveFile); } catch {}
+      }
+      for (const p of lockedPaths) this.lockedFiles.delete(p);
     }
   }
 }

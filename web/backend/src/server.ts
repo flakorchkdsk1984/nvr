@@ -237,14 +237,16 @@ fastify.register(async (protectedRoutes) => {
   // Thumbnail
   protectedRoutes.get('/api/recordings/:date/:file/thumb', async (req, reply) => {
     const { date, file } = req.params as { date: string; file: string };
+    const { at } = req.query as { at?: string };
+    const atSeconds = at !== undefined ? parseFloat(at) : undefined;
     try {
-      const thumbPath = await generateThumbnail(date, file);
+      const thumbPath = await generateThumbnail(date, file, !isNaN(Number(atSeconds)) ? atSeconds : undefined);
       reply.header('Content-Type', 'image/jpeg');
       reply.header('Cache-Control', 'public, max-age=86400');
       return reply.send(fs.createReadStream(thumbPath));
     } catch {
       reply.header('Content-Type', 'image/svg+xml');
-      reply.header('Cache-Control', 'public, max-age=3600');
+      reply.header('Cache-Control', 'no-store');
       return reply.send(
         `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"><rect width="320" height="180" fill="#1e293b"/><text x="50%" y="50%" fill="#64748b" font-family="sans-serif" font-size="14" dominant-baseline="middle" text-anchor="middle">Sin Miniatura</text></svg>`
       );

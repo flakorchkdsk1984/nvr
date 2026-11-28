@@ -797,7 +797,7 @@
                         (click)="toggleEventSelection(item)"
                       >
                         <!-- Preview Thumbnail -->
-                        <td class="td-preview" (click)="$event.stopPropagation(); openSnapshotModal('/api/events/' + item.id + '/snapshot', 'Captura Evento #' + item.id + ' (' + item.start_time + ')')">
+                        <td class="td-preview" (click)="$event.stopPropagation(); openSnapshotModal(item.snapshot_path ? '/api/events/' + item.id + '/snapshot' : (item.recording.thumbUrl || ''), 'Captura Evento #' + item.id + ' (' + item.start_time + ')')">
                           <div class="table-thumb-wrap">
                             @if (item.recording.hasRecording && item.recording.thumbUrl) {
                               <img [src]="item.recording.thumbUrl" alt="Miniatura video" class="row-thumb" loading="lazy" />
@@ -1016,7 +1016,7 @@
                 >
                   <div
                     class="event-thumb-box"
-                    (click)="openSnapshotModal('/api/events/' + item.id + '/snapshot', 'Captura Evento #' + item.id + ' (' + item.start_time + ')')"
+                    (click)="openSnapshotModal(item.snapshot_path ? '/api/events/' + item.id + '/snapshot' : (item.recording.thumbUrl || ''), 'Captura Evento #' + item.id + ' (' + item.start_time + ')')"
                   >
                     @if (item.recording.hasRecording && item.recording.thumbUrl) {
                       <img [src]="item.recording.thumbUrl" alt="Miniatura" class="event-thumb-img" loading="lazy" />

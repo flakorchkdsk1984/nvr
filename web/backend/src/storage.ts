@@ -108,15 +108,22 @@ export function runRetentionCycle(): { deletedCount: number; freedBytes: number 
   let deletedCount = 0;
   let freedBytes = 0;
 
+  // Compute today and tomorrow YYYY-MM-DD so active recording folders are never deleted
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const todayObj = new Date(now);
+  const todayStr = `${todayObj.getFullYear()}-${pad(todayObj.getMonth() + 1)}-${pad(todayObj.getDate())}`;
+
+  // Protect files modified within the last 5 minutes from being purged while writing/finalizing
+  const ACTIVE_PROTECTION_MS = 5 * 60 * 1000;
+
   // 1. Delete files older than retention days
   for (const item of [...allFiles]) {
-    if (now - item.mtime > maxAgeMs) {
+    if (now - item.mtime > maxAgeMs && (now - item.mtime) > ACTIVE_PROTECTION_MS) {
       try {
         fs.unlinkSync(item.fullPath);
         deletedCount++;
         freedBytes += item.size;
         addLog('info', `Purged old recording (> ${config.RETENTION_DAYS}d): ${item.date}/${item.name}`);
-        // remove thumb
         const thumb = path.join(config.THUMBS_DIR, `${path.parse(item.name).name}.jpg`);
         if (fs.existsSync(thumb)) try { fs.unlinkSync(thumb); } catch {}
         allFiles.splice(allFiles.indexOf(item), 1);
@@ -129,30 +136,47 @@ export function runRetentionCycle(): { deletedCount: number; freedBytes: number 
   // 2. Check disk usage threshold
   let stats = getStorageStats();
   if (stats.percentUsed > config.MAX_DISK_USAGE_PERCENT) {
-    addLog('warn', `Disk usage (${stats.percentUsed}%) exceeds ${config.MAX_DISK_USAGE_PERCENT}%. Purging oldest files...`);
-    for (const item of [...allFiles]) {
-      try {
-        fs.unlinkSync(item.fullPath);
-        deletedCount++;
-        freedBytes += item.size;
-        addLog('info', `Purged for disk limit: ${item.date}/${item.name} (${(item.size / 1024 / 1024).toFixed(1)}MB)`);
-        const thumb = path.join(config.THUMBS_DIR, `${path.parse(item.name).name}.jpg`);
-        if (fs.existsSync(thumb)) try { fs.unlinkSync(thumb); } catch {}
-        allFiles.splice(allFiles.indexOf(item), 1);
+    // Only purge older recordings if NVR actually holds meaningful data (> 128 MB),
+    // keeping at least the newest 5 recordings and protecting active clips (< 5 min old).
+    const MIN_KEEP_RECORDINGS_BYTES = 128 * 1024 * 1024;
+    const MIN_KEEP_FILES = 5;
+    let remainingBytes = allFiles.reduce((acc, f) => acc + f.size, 0);
 
-        stats = getStorageStats();
-        if (stats.percentUsed <= config.MAX_DISK_USAGE_PERCENT - 2) {
+    if (remainingBytes > MIN_KEEP_RECORDINGS_BYTES && allFiles.length > MIN_KEEP_FILES) {
+      addLog('warn', `Disk usage (${stats.percentUsed}%) exceeds ${config.MAX_DISK_USAGE_PERCENT}%. Purging oldest files...`);
+      for (const item of [...allFiles]) {
+        if (allFiles.length <= MIN_KEEP_FILES || remainingBytes <= MIN_KEEP_RECORDINGS_BYTES) {
           break;
         }
-      } catch (err) {
-        addLog('error', `Failed to purge ${item.fullPath}`, String(err));
+        if ((now - item.mtime) < ACTIVE_PROTECTION_MS) {
+          continue;
+        }
+        try {
+          fs.unlinkSync(item.fullPath);
+          deletedCount++;
+          freedBytes += item.size;
+          remainingBytes -= item.size;
+          addLog('info', `Purged for disk limit: ${item.date}/${item.name} (${(item.size / 1024 / 1024).toFixed(1)}MB)`);
+          const thumb = path.join(config.THUMBS_DIR, `${path.parse(item.name).name}.jpg`);
+          if (fs.existsSync(thumb)) try { fs.unlinkSync(thumb); } catch {}
+          allFiles.splice(allFiles.indexOf(item), 1);
+
+          stats = getStorageStats();
+          if (stats.percentUsed <= config.MAX_DISK_USAGE_PERCENT - 2) {
+            break;
+          }
+        } catch (err) {
+          addLog('error', `Failed to purge ${item.fullPath}`, String(err));
+        }
       }
+    } else {
+      addLog('warn', `Host disk usage is ${stats.percentUsed}% (NVR recordings only ${Math.round(remainingBytes / 1024 / 1024)}MB); skipping purge to protect recent clips.`);
     }
   }
 
-  // 3. Remove empty date directories
+  // 3. Remove empty past date directories (never delete today or future date directories)
   for (const d of dates) {
-    if (!DATE_REGEX.test(d)) continue;
+    if (!DATE_REGEX.test(d) || d >= todayStr) continue;
     const dPath = path.join(config.RECORDINGS_DIR, d);
     try {
       if (fs.readdirSync(dPath).length === 0) {

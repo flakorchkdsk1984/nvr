@@ -168,34 +168,49 @@ export function getAvailableDays() {
     summaries.sort((a, b) => b.date.localeCompare(a.date)); // Newest date first
     return summaries;
 }
-export async function generateThumbnail(date, fileName) {
+export async function generateThumbnail(date, fileName, atSeconds) {
     const filePath = validateRecordingPath(date, fileName);
     const baseName = path.parse(fileName).name;
     if (!fs.existsSync(config.THUMBS_DIR)) {
         fs.mkdirSync(config.THUMBS_DIR, { recursive: true });
     }
-    const thumbPath = path.join(config.THUMBS_DIR, `${baseName}.jpg`);
-    if (fs.existsSync(thumbPath)) {
-        return thumbPath;
-    }
     if (!fs.existsSync(filePath)) {
         throw new Error('Recording file not found');
     }
+    const stat = fs.statSync(filePath);
+    const dur = getRecordingDurationSeconds(filePath, stat.size, stat.mtimeMs);
+    let seekSec = 1;
+    if (atSeconds !== undefined && isFinite(atSeconds) && atSeconds >= 0) {
+        seekSec = Math.min(Math.max(0.5, atSeconds), Math.max(0.5, dur - 0.5));
+    }
+    else if (dur > 2 && dur <= 120) {
+        // For motion clips (which include pre-roll), extract near midpoint of event rather than pre-roll frame 1s
+        seekSec = Math.min(Math.max(1, Math.floor(dur / 2)), 12);
+    }
+    const suffix = (atSeconds !== undefined && isFinite(atSeconds) && atSeconds >= 0)
+        ? `_at${Math.floor(seekSec)}`
+        : '';
+    const thumbPath = path.join(config.THUMBS_DIR, `${baseName}${suffix}.jpg`);
+    if (fs.existsSync(thumbPath)) {
+        return thumbPath;
+    }
     try {
-        // Extract 1 frame at 0.5s or 1s
         await execFileAsync(config.FFMPEG_PATH, [
             '-y',
-            '-ss', '00:00:01',
+            '-ss', String(seekSec.toFixed(1)),
             '-i', filePath,
             '-vframes', '1',
             '-q:v', '3',
             '-vf', 'scale=320:-1',
             thumbPath,
         ], { timeout: 8000 });
-        return thumbPath;
+        if (fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
+            return thumbPath;
+        }
+        throw new Error('Empty thumbnail generated');
     }
     catch (err) {
-        // If extraction at 1s fails (e.g. very short file), try frame 0
+        // Fallback to first frame
         try {
             await execFileAsync(config.FFMPEG_PATH, [
                 '-y',
@@ -205,7 +220,10 @@ export async function generateThumbnail(date, fileName) {
                 '-vf', 'scale=320:-1',
                 thumbPath,
             ], { timeout: 8000 });
-            return thumbPath;
+            if (fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
+                return thumbPath;
+            }
+            throw new Error('Empty fallback thumbnail');
         }
         catch {
             throw new Error(`Failed to generate thumbnail: ${err.message}`);
@@ -353,14 +371,16 @@ export function findRecordingForEvent(startTimeIso, durationS = 0) {
     }
     const chosen = bestDirectMatch || bestSpanMatch;
     if (chosen) {
+        const offsetSeconds = Math.max(0, Math.round(chosen.diffSeconds * 10) / 10);
+        const thumbQuery = offsetSeconds > 2 ? `?at=${Math.round(offsetSeconds + 2)}` : '';
         return {
             hasRecording: true,
             camera: CAMERA_NAME,
             date: chosen.date,
             fileName: chosen.fileName,
             videoUrl: `/api/recordings/${chosen.date}/${chosen.fileName}`,
-            thumbUrl: `/api/recordings/${chosen.date}/${chosen.fileName}/thumb`,
-            offsetSeconds: Math.max(0, Math.round(chosen.diffSeconds * 10) / 10),
+            thumbUrl: `/api/recordings/${chosen.date}/${chosen.fileName}/thumb${thumbQuery}`,
+            offsetSeconds,
             durationSeconds: Math.max(chosen.fileDuration, durationS || 0),
         };
     }
