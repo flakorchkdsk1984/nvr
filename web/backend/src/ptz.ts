@@ -11,18 +11,21 @@ export const PtzMoveSchema = z.object({
 });
 
 export const PtzPresetSchema = z.object({
-  action: z.enum(['goto', 'set']),
-  number: z.number().int().min(1).max(8),
+  action: z.enum(['goto', 'set', 'meta']),
+  number: z.number().int().min(1).max(6),
   name: z.string().max(40).optional(),
+  emoji: z.string().max(16).optional(),
 });
 
 export interface PresetInfo {
   number: number;
   name: string;
+  emoji?: string;
   updatedAt?: string;
 }
 
 const presetsFile = path.join(config.DATA_DIR, 'presets.json');
+const MAX_PRESETS = 6;
 
 function loadPresets(): Record<number, PresetInfo> {
   try {
@@ -34,8 +37,8 @@ function loadPresets(): Record<number, PresetInfo> {
     addLog('error', 'Failed to read presets file', String(err));
   }
   const defaultPresets: Record<number, PresetInfo> = {};
-  for (let i = 1; i <= 8; i++) {
-    defaultPresets[i] = { number: i, name: `Preset ${i}` };
+  for (let i = 1; i <= MAX_PRESETS; i++) {
+    defaultPresets[i] = { number: i, name: `Preset ${i}`, emoji: '🎯' };
   }
   return defaultPresets;
 }
@@ -103,19 +106,39 @@ export async function executePtzMove(params: z.infer<typeof PtzMoveSchema>) {
 }
 
 export async function executePtzPreset(params: z.infer<typeof PtzPresetSchema>) {
+  if (params.action === 'meta') {
+    const presets = loadPresets();
+    const existing = presets[params.number];
+    const cleanName = params.name?.trim();
+    const cleanEmoji = params.emoji?.trim();
+    presets[params.number] = {
+      number: params.number,
+      name: cleanName || existing?.name || `Preset ${params.number}`,
+      emoji: cleanEmoji || existing?.emoji || '🎯',
+      updatedAt: new Date().toISOString(),
+    };
+    savePresets(presets);
+    addLog('info', `Updated Preset ${params.number} metadata: ${presets[params.number].emoji} ${presets[params.number].name}`);
+    return { success: true, status: 200, message: 'Metadata updated' };
+  }
+
   const endpoint = `/cgi-bin/hi3510/preset.cgi?-status=1&-act=${params.action}&-number=${params.number}`;
   const result = await sendCameraCgi(endpoint, 12000);
 
   if (result.success) {
     const presets = loadPresets();
     if (params.action === 'set') {
+      const existing = presets[params.number];
+      const cleanName = params.name?.trim();
+      const cleanEmoji = params.emoji?.trim();
       presets[params.number] = {
         number: params.number,
-        name: params.name || presets[params.number]?.name || `Preset ${params.number}`,
+        name: cleanName || existing?.name || `Preset ${params.number}`,
+        emoji: cleanEmoji || existing?.emoji || '🎯',
         updatedAt: new Date().toISOString(),
       };
       savePresets(presets);
-      addLog('info', `Saved Preset ${params.number}: ${presets[params.number].name}`);
+      addLog('info', `Saved Preset ${params.number}: ${presets[params.number].emoji} ${presets[params.number].name}`);
     }
   } else {
     addLog('warn', `Preset command failed: ${params.action} ${params.number}`, result.message);
@@ -127,8 +150,14 @@ export async function executePtzPreset(params: z.infer<typeof PtzPresetSchema>) 
 export function getPresetsList(): PresetInfo[] {
   const map = loadPresets();
   const list: PresetInfo[] = [];
-  for (let i = 1; i <= 8; i++) {
-    list.push(map[i] || { number: i, name: `Preset ${i}` });
+  for (let i = 1; i <= MAX_PRESETS; i++) {
+    const p = map[i];
+    list.push({
+      number: i,
+      name: p?.name || `Preset ${i}`,
+      emoji: p?.emoji || '🎯',
+      ...(p?.updatedAt ? { updatedAt: p.updatedAt } : {}),
+    });
   }
   return list;
 }

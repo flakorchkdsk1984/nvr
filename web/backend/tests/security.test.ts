@@ -6,7 +6,7 @@ import {
   FILE_REGEX,
   DATE_REGEX,
 } from '../src/recordings.js';
-import { PtzMoveSchema, PtzPresetSchema } from '../src/ptz.js';
+import { PtzMoveSchema, PtzPresetSchema, getPresetsList } from '../src/ptz.js';
 
 describe('Security & Validation Tests', () => {
   it('should accept valid recording filenames', () => {
@@ -62,7 +62,15 @@ describe('Security & Validation Tests', () => {
     const validPreset = PtzPresetSchema.safeParse({ action: 'goto', number: 3 });
     assert.strictEqual(validPreset.success, true);
 
-    const invalidPreset = PtzPresetSchema.safeParse({ action: 'goto', number: 0 });
-    assert.strictEqual(invalidPreset.success, false);
+    const validPresetSix = PtzPresetSchema.safeParse({ action: 'meta', number: 6, name: 'Candado', emoji: '🔒' });
+    assert.strictEqual(validPresetSix.success, true);
+
+    const invalidPresetZero = PtzPresetSchema.safeParse({ action: 'goto', number: 0 });
+    assert.strictEqual(invalidPresetZero.success, false);
+
+    const invalidPresetSeven = PtzPresetSchema.safeParse({ action: 'goto', number: 7 });
+    assert.strictEqual(invalidPresetSeven.success, false);
+
+    assert.strictEqual(getPresetsList().length, 6);
   });
 });

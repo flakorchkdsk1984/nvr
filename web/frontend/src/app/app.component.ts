@@ -109,6 +109,11 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   // Preset editor modal
   editingPreset = signal<PresetInfo | null>(null);
   presetNameInput = '';
+  presetEmojiInput = '🎯';
+  readonly presetEmojiOptions = [
+    '🎯', '🏠', '🚪', '🔒', '🚗', '🌳', '📦', '🐶',
+    '⚡', '👀', '🛋️', '🛣️', '🪟', '💡', '🚨', '📸',
+  ];
 
   // Recordings & Player state
   activeSegment = signal<SegmentInfo | null>(null);
@@ -840,17 +845,40 @@ export class AppComponent implements OnInit, OnDestroy, AfterViewInit {
   openSavePresetModal(preset: PresetInfo) {
     this.editingPreset.set(preset);
     this.presetNameInput = preset.name;
+    this.presetEmojiInput = preset.emoji || '🎯';
+  }
+
+  selectPresetEmoji(emoji: string) {
+    this.presetEmojiInput = emoji;
   }
 
   savePreset() {
     const preset = this.editingPreset();
     if (!preset) return;
-    this.nvr.triggerPreset('set', preset.number, this.presetNameInput || preset.name).subscribe({
+    const name = this.presetNameInput.trim() || preset.name;
+    const emoji = this.presetEmojiInput.trim() || preset.emoji || '🎯';
+    this.nvr.triggerPreset('set', preset.number, name, emoji).subscribe({
       next: () => {
         this.editingPreset.set(null);
       },
       error: (err) => {
         console.warn('Error guardando preset:', err);
+        this.editingPreset.set(null);
+      },
+    });
+  }
+
+  savePresetMetaOnly() {
+    const preset = this.editingPreset();
+    if (!preset) return;
+    const name = this.presetNameInput.trim() || preset.name;
+    const emoji = this.presetEmojiInput.trim() || preset.emoji || '🎯';
+    this.nvr.triggerPreset('meta', preset.number, name, emoji).subscribe({
+      next: () => {
+        this.editingPreset.set(null);
+      },
+      error: (err) => {
+        console.warn('Error actualizando preset:', err);
         this.editingPreset.set(null);
       },
     });

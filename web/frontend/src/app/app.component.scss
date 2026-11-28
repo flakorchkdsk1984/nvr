@@ -201,9 +201,127 @@
   display: grid;
   grid-template-columns: 1fr 360px;
   gap: 20px;
+  align-items: start;
 
   @media (max-width: 1024px) {
     grid-template-columns: 1fr;
+  }
+}
+
+.live-left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.presets-below-player {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 14px 16px;
+
+  .section-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+
+    h4 {
+      font-size: 0.95rem;
+      color: var(--text-main);
+    }
+
+    .subhint {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+  }
+
+  .presets-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+
+    @media (max-width: 1280px) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    @media (max-width: 640px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .preset-card {
+      display: flex;
+      background-color: var(--bg-main);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      min-width: 0;
+      transition: border-color 0.15s ease;
+
+      &:hover {
+        border-color: var(--primary);
+      }
+
+      .btn-preset-go {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        background: transparent;
+        color: var(--text-main);
+        font-size: 0.85rem;
+        text-align: left;
+        min-width: 0;
+
+        .preset-emoji {
+          font-size: 1.25rem;
+          line-height: 1;
+          flex-shrink: 0;
+        }
+
+        .preset-meta {
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+
+          .num {
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1.1;
+          }
+
+          .name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 0.82rem;
+            font-weight: 600;
+          }
+        }
+
+        &:hover {
+          background-color: var(--bg-card-hover);
+        }
+      }
+
+      .btn-preset-edit {
+        padding: 0 8px;
+        background-color: transparent;
+        border-left: 1px solid var(--border-color);
+        font-size: 0.85rem;
+        flex-shrink: 0;
+
+        &:hover {
+          background-color: var(--border-color);
+        }
+      }
+    }
   }
 }
 
@@ -730,67 +848,6 @@
         color: var(--success);
         text-align: center;
         word-break: break-all;
-      }
-    }
-  }
-
-  .presets-section {
-    border-top: 1px solid var(--border-color);
-    padding-top: 14px;
-
-    .section-title h4 {
-      font-size: 0.95rem;
-      color: var(--text-muted);
-      margin-bottom: 10px;
-    }
-
-    .presets-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-
-      .preset-card {
-        display: flex;
-        background-color: var(--bg-main);
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        overflow: hidden;
-
-        .btn-preset-go {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          padding: 8px 10px;
-          background: transparent;
-          color: var(--text-main);
-          font-size: 0.85rem;
-          text-align: left;
-
-          .num {
-            font-weight: 700;
-            color: var(--primary);
-          }
-          .name {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 80px;
-          }
-          &:hover {
-            background-color: var(--bg-card-hover);
-          }
-        }
-
-        .btn-preset-edit {
-          padding: 0 8px;
-          background-color: transparent;
-          border-left: 1px solid var(--border-color);
-          font-size: 0.85rem;
-          &:hover {
-            background-color: var(--border-color);
-          }
-        }
       }
     }
   }
@@ -1440,6 +1497,58 @@
       flex-direction: column;
       gap: 6px;
       label { font-size: 0.85rem; color: var(--text-muted); }
+
+      .emoji-input-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+
+        .emoji-preview {
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.5rem;
+          background-color: var(--bg-main);
+          border: 1px solid var(--border-color);
+          border-radius: 8px;
+          flex-shrink: 0;
+        }
+
+        input {
+          flex: 1;
+          font-size: 1.1rem;
+        }
+      }
+
+      .emoji-picker-grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 6px;
+        margin-top: 4px;
+
+        .emoji-choice-btn {
+          height: 36px;
+          font-size: 1.15rem;
+          background-color: var(--bg-main);
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          &:hover {
+            border-color: var(--primary);
+            background-color: var(--bg-card-hover);
+          }
+
+          &.selected {
+            border-color: var(--primary);
+            background-color: rgba(59, 130, 246, 0.2);
+          }
+        }
+      }
     }
 
     .modal-actions {
@@ -1448,11 +1557,23 @@
       gap: 10px;
       margin-top: 8px;
 
+      &.modal-actions-wrap {
+        flex-wrap: wrap;
+      }
+
       .btn-cancel {
         padding: 8px 16px;
         background-color: var(--bg-main);
         color: var(--text-main);
         border: 1px solid var(--border-color);
+      }
+      .btn-secondary-action {
+        padding: 8px 14px;
+        background-color: rgba(59, 130, 246, 0.16);
+        color: var(--text-main);
+        border: 1px solid var(--primary);
+        font-weight: 600;
+        &:hover { background-color: rgba(59, 130, 246, 0.28); }
       }
       .btn-confirm {
         padding: 8px 16px;

@@ -98,8 +98,8 @@ export class NvrService {
     return this.http.post('/api/ptz/move', { action, step, speed });
   }
 
-  triggerPreset(action: 'goto' | 'set', number: number, name?: string): Observable<any> {
-    return this.http.post('/api/ptz/preset', { action, number, name }).pipe(
+  triggerPreset(action: 'goto' | 'set' | 'meta', number: number, name?: string, emoji?: string): Observable<any> {
+    return this.http.post('/api/ptz/preset', { action, number, name, emoji }).pipe(
       tap(() => this.fetchPresets().subscribe())
     );
   }

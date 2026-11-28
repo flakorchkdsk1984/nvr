@@ -19,6 +19,7 @@ export interface HealthStatus {
 export interface PresetInfo {
   number: number;
   name: string;
+  emoji?: string;
   updatedAt?: string;
 }
 

@@ -151,8 +151,9 @@
     <!-- 1. LIVE VIEW & PTZ -->
     @if (activeTab() === 'live') {
       <div class="live-grid">
-        <!-- Video Stream Player -->
-        <section class="video-container" #playerBox>
+        <div class="live-left-column">
+          <!-- Video Stream Player -->
+          <section class="video-container" #playerBox>
           <div class="stream-toolbar">
             <div class="stream-selector">
               <button
@@ -368,6 +369,31 @@
           </div>
         </section>
 
+        <!-- PRESETS 1..6 BELOW PLAYER -->
+        <div class="presets-section presets-below-player">
+          <div class="section-title">
+            <h4>🎯 Presets Rápidos (1–6)</h4>
+            <span class="subhint">Clic para mover cámara · ✏️ para cambiar emoji, nombre o guardar posición</span>
+          </div>
+          <div class="presets-grid">
+            @for (p of nvr.presets().slice(0, 6); track p.number) {
+              <div class="preset-card">
+                <button class="btn-preset-go" (click)="gotoPreset(p.number)" [title]="'Ir a Preset #' + p.number + ': ' + p.name">
+                  <span class="preset-emoji">{{ p.emoji || '🎯' }}</span>
+                  <span class="preset-meta">
+                    <span class="num">#{{ p.number }}</span>
+                    <span class="name">{{ p.name }}</span>
+                  </span>
+                </button>
+                <button class="btn-preset-edit" (click)="openSavePresetModal(p)" title="Editar emoji, nombre o guardar posición actual">
+                  ✏️
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+
         <!-- PTZ Controller Panel -->
         <aside class="ptz-panel">
           <div class="panel-header">
@@ -543,26 +569,6 @@
                 }
               </div>
             }
-          </div>
-
-          <!-- PRESETS 1..8 -->
-          <div class="presets-section">
-            <div class="section-title">
-              <h4>🎯 Presets Rápidos</h4>
-            </div>
-            <div class="presets-grid">
-              @for (p of nvr.presets(); track p.number) {
-                <div class="preset-card">
-                  <button class="btn-preset-go" (click)="gotoPreset(p.number)" [title]="'Ir a ' + p.name">
-                    <span class="num">{{ p.number }}</span>
-                    <span class="name">{{ p.name }}</span>
-                  </button>
-                  <button class="btn-preset-edit" (click)="openSavePresetModal(p)" title="Guardar posición actual">
-                    💾
-                  </button>
-                </div>
-              }
-            </div>
           </div>
         </aside>
       </div>
@@ -1387,17 +1393,43 @@
 @if (editingPreset(); as p) {
   <div class="modal-backdrop">
     <div class="modal-box">
-      <h4>💾 Guardar Posición en Preset {{ p.number }}</h4>
-      <p>La cámara memorizará su posición actual de Pan/Tilt/Zoom.</p>
+      <h4>{{ presetEmojiInput || '🎯' }} Editar Preset #{{ p.number }}</h4>
+      <p>Personaliza el emoji y nombre, o guarda también la posición actual Pan/Tilt/Zoom en la cámara.</p>
+
+      <div class="form-group">
+        <label for="pemoji">Emoji del Preset</label>
+        <div class="emoji-input-row">
+          <span class="emoji-preview">{{ presetEmojiInput || '🎯' }}</span>
+          <input id="pemoji" type="text" [(ngModel)]="presetEmojiInput" placeholder="🎯" maxlength="8" />
+        </div>
+        <div class="emoji-picker-grid">
+          @for (em of presetEmojiOptions; track em) {
+            <button
+              type="button"
+              class="emoji-choice-btn"
+              [class.selected]="presetEmojiInput === em"
+              (click)="selectPresetEmoji(em)"
+              [title]="'Usar emoji ' + em"
+            >
+              {{ em }}
+            </button>
+          }
+        </div>
+      </div>
 
       <div class="form-group">
         <label for="pname">Nombre del Preset</label>
         <input id="pname" type="text" [(ngModel)]="presetNameInput" placeholder="Ej: Entrada Principal" maxlength="30" />
       </div>
 
-      <div class="modal-actions">
+      <div class="modal-actions modal-actions-wrap">
         <button class="btn-cancel" (click)="editingPreset.set(null)">Cancelar</button>
-        <button class="btn-confirm" (click)="savePreset()">Guardar Preset</button>
+        <button class="btn-secondary-action" (click)="savePresetMetaOnly()" title="Cambiar solo nombre y emoji sin mover la posición PTZ guardada">
+          ✏️ Solo Emoji/Nombre
+        </button>
+        <button class="btn-confirm" (click)="savePreset()" title="Guardar posición actual de cámara + nombre y emoji">
+          💾 Guardar Posición
+        </button>
       </div>
     </div>
   </div>
